@@ -2,117 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>探奇 / Mind Gym — M0 低保真原型</title>
-<style>
-  :root{
-    --green:#0E6B50; --green-soft:#E6F2EC; --coral:#FF8A5B;
-    --bg:#F5F7F5; --card:#FFFFFF; --ink:#1c2b25; --muted:#7a8a83;
-    --line:#e7ece9; --radius:18px;
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;color:var(--ink);}
-  .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;padding:24px;}
-  /* phone */
-  .phone{width:375px;height:760px;background:var(--bg);border-radius:34px;box-shadow:0 14px 40px rgba(0,0,0,.18);overflow:hidden;position:relative;display:flex;flex-direction:column;border:8px solid #2a2f2d;}
-  .screen{flex:1;overflow-y:auto;padding:0 18px 90px;display:none;}
-  .screen.active{display:block;}
-  .overlay{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:20;}
-  .overlay.active{display:flex;}
-  .ov-head{height:48px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 12px;gap:10px;font-weight:700;}
-  .ov-body{flex:1;overflow-y:auto;padding:16px;}
-  /* screen header (pool / mine) */
-  .s-head{height:52px;display:flex;align-items:center;font-size:17px;font-weight:700;position:sticky;top:0;background:var(--bg);}
-  /* cards */
-  .card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(16,40,32,.05);}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
-  .chip{background:var(--green-soft);color:var(--green);border-radius:999px;padding:9px 13px;font-size:14px;font-weight:600;border:none;}
-  .recent{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
-  .rc{background:#fff;border-radius:14px;padding:10px 12px;font-size:14px;display:flex;gap:8px;align-items:flex-start;box-shadow:0 1px 4px rgba(16,40,32,.04);}
-  .tag{font-size:11px;background:var(--green-soft);color:var(--green);border-radius:6px;padding:2px 6px;white-space:nowrap;}
-  .mode{font-size:11px;color:var(--muted);}
-  /* triage */
-  .tri{display:flex;gap:6px;margin-top:10px;}
-  .tri button{flex:1;border:none;border-radius:12px;padding:9px 0;font-size:13px;font-weight:700;color:#fff;}
-  .b-push{background:var(--green);} .b-drop{background:#b9c2bd;} .b-arc{background:var(--coral);}
-  .guide-q{font-size:13px;color:var(--green);font-weight:600;margin-top:8px;}
-  /* buttons */
-  .btn{display:block;width:100%;border:none;border-radius:14px;padding:14px;font-size:16px;font-weight:700;background:var(--green);color:#fff;margin-top:10px;text-align:center;}
-  .btn.coral{background:var(--coral);}
-  .btn.ghost{background:#fff;color:var(--green);border:1.5px solid var(--green);}
-  .btn:active{transform:scale(.98);}
-  .section-title{font-size:13px;color:var(--muted);font-weight:700;margin:14px 0 8px;letter-spacing:.5px;cursor:pointer;}
-  .note{font-size:11px;color:#9aa8a2;padding:14px 4px;text-align:center;}
-
-  /* ===== 首页 Google 式极简 ===== */
-  .home{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:120px;}
-  .wordmark{font-size:30px;font-weight:800;letter-spacing:2px;color:var(--green);margin-bottom:4px;}
-  .wordmark small{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.5px;margin-left:6px;}
-  .prompt{font-size:16px;color:var(--ink);margin:18px 0 14px;text-align:center;line-height:1.5;}
-  .prompt b{color:var(--coral);}
-  .search{width:312px;max-width:86%;display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:6px 8px 6px 6px;box-shadow:0 2px 10px rgba(16,40,32,.06);}
-  .search .in-plus{width:38px;height:38px;border-radius:50%;background:var(--green-soft);color:var(--green);border:none;font-size:24px;font-weight:300;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
-  .search .in-plus:active{transform:scale(.94);}
-  .search textarea{flex:1;border:none;background:transparent;padding:10px 4px;font-size:16px;color:var(--ink);min-height:40px;resize:none;line-height:1.4;}
-  .search textarea:focus{outline:none;}
-  .search .send{width:36px;height:36px;border-radius:50%;background:var(--green);color:#fff;border:none;font-size:16px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
-  .search .send:active{transform:scale(.94);}
-  .home-hint{font-size:12px;color:var(--muted);margin-top:12px;text-align:center;}
-  .home-fold{margin-top:26px;width:300px;max-width:84%;}
-  .fold-toggle{font-size:13px;color:var(--muted);background:none;border:none;padding:6px 0;display:flex;align-items:center;gap:4px;}
-  .fold-body{display:none;margin-top:6px;}
-
-  /* ===== 底部导航 + 中央 FAB ===== */
-  .nav{position:absolute;left:0;right:0;bottom:0;height:64px;background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;padding:0 28px;z-index:15;}
-  .nav button.nav-item{flex:1;border:none;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--muted);}
-  .nav button.nav-item .ic{font-size:20px;}
-  .nav button.nav-item.on{color:var(--green);font-weight:700;}
-  .fab{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);width:66px;height:66px;border-radius:50%;background:var(--green);color:#fff;border:none;font-size:17px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(14,107,80,.45);z-index:18;line-height:1;}
-  .fab:active{transform:translateX(-50%) scale(.94);}
-
-  /* ===== 捕捉来源面板（＋ 展开） ===== */
-  .sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:25;display:none;}
-  .sheet-mask.active{display:block;}
-  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 30px;z-index:26;transform:translateY(110%);transition:transform .22s ease;box-shadow:0 -8px 30px rgba(0,0,0,.18);}
-  .sheet.active{transform:translateY(0);}
-  .sheet-handle{width:40px;height:4px;border-radius:2px;background:#d6ddd9;margin:2px auto 14px;}
-  .sheet-title{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:12px;text-align:center;}
-  .sheet-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .sheet-grid button{border:1.5px solid var(--line);background:#fff;border-radius:16px;padding:16px 10px;font-size:15px;font-weight:600;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:6px;}
-  .sheet-grid button .em{font-size:26px;}
-  .sheet-grid button:active{background:var(--green-soft);}
-
-  /* report / flows */
-  .grow{display:flex;align-items:center;gap:12px;}
-  .grow .ring{width:64px;height:64px;border-radius:50%;background:conic-gradient(var(--green) 0 68%,var(--green-soft) 68% 100%);display:flex;align-items:center;justify-content:center;position:relative;}
-  .grow .ring .ring-num{width:50px;height:50px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:20px;}
-  .bar{height:10px;border-radius:6px;background:var(--green-soft);overflow:hidden;margin:6px 0 14px;}
-  .bar > i{display:block;height:100%;background:var(--green);}
-  .bar.coral > i{background:var(--coral);}
-  .step-dot{display:flex;gap:6px;margin-bottom:14px;}
-  .step-dot i{flex:1;height:6px;border-radius:3px;background:var(--line);}
-  .step-dot i.on{background:var(--green);}
-  .ai-msg{background:var(--green-soft);border-radius:14px;padding:12px;font-size:14px;line-height:1.5;margin-bottom:10px;}
-  .user-msg{background:#fff;border:1.5px solid var(--green);border-radius:14px;padding:12px;font-size:14px;margin-bottom:10px;}
-  .warn{background:#FFF3EC;border:1.5px solid var(--coral);border-radius:14px;padding:12px;font-size:13px;color:#a8491f;margin-bottom:10px;}
-  .artifact{background:#fff;border-radius:14px;padding:14px;font-size:14px;line-height:1.6;border-left:4px solid var(--green);}
-  .platforms{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
-  .pf{background:var(--green-soft);color:var(--green);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;}
-  .big-q{font-size:19px;font-weight:700;line-height:1.4;margin:6px 0 14px;}
-  .cap-input{width:100%;border:1.5px dashed var(--line);border-radius:14px;background:#fff;padding:14px;font-size:17px;color:var(--ink);min-height:84px;resize:none;}
-  .cap-input:focus{outline:none;border-color:var(--green);}
-  .guide-q{font-size:13px;color:var(--green);font-weight:600;margin-top:8px;}
-  /* conversation (name input) */
-  .conv{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
-  .bub{max-width:82%;padding:10px 13px;font-size:14px;line-height:1.45;border-radius:16px;}
-  .bub.sys{background:var(--green-soft);color:var(--ink);align-self:flex-start;border-bottom-left-radius:5px;}
-  .bub.me{background:var(--green);color:#fff;align-self:flex-end;border-bottom-right-radius:5px;}
-  .name-row{display:flex;gap:8px;margin-top:4px;}
-  .name-row input{flex:1;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:15px;color:var(--ink);}
-  .name-row input:focus{outline:none;border-color:var(--green);}
-  .name-row button{border:none;border-radius:12px;background:var(--coral);color:#fff;font-weight:700;padding:0 16px;font-size:15px;}
-  .radar-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:2px;}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>探奇 / Mind Gym</title>
+<meta name="theme-color" content="#0E6B50" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="wrap">
@@ -128,17 +24,16 @@
           <textarea class="cap-input" id="home-input" placeholder="记录让你纳闷的东西，或者是有了一个新的想法…"></textarea>
           <button class="send" onclick="submitHome()" title="记下来">✓</button>
         </div>
+        <div class="mode-toggle" id="mode-toggle">
+          <button class="mode-chip on" data-mode="passive" onclick="setMode('passive',this)">🌧️ 被动遇到</button>
+          <button class="mode-chip" data-mode="active" onclick="setMode('active',this)">🔆 主动探究</button>
+        </div>
         <div class="home-hint">随手记，不用想清楚 📡</div>
 
-        <!-- 折叠区：下面内容默认隐含 -->
         <div class="home-fold">
           <button class="fold-toggle" onclick="toggleFold()">最近捕捉 ▾</button>
           <div class="fold-body" id="fold-body">
-            <div class="recent">
-              <div class="rc"><span>🌧️</span><div>班里分组总有人被剩下，说不清为啥不舒服 <span class="tag">被动</span></div></div>
-              <div class="rc"><span>🔆</span><div>想搞清楚短视频为什么让人停不下来 <span class="tag">主动</span></div></div>
-              <div class="rc"><span>🌧️</span><div>和妈吵架后一直堵着，不想说话 <span class="tag">被动</span></div></div>
-            </div>
+            <div class="recent" id="recent-list"></div>
             <button class="btn ghost" onclick="go('s-pool')">去捕捉池分拣 →</button>
           </div>
         </div>
@@ -148,33 +43,13 @@
     <!-- ================= 池 / 分拣 ================= -->
     <div class="screen" id="s-pool">
       <div class="s-head">🗂️ 我的捕捉池</div>
-      <div class="card">
-        <div class="rc" style="box-shadow:none;padding:0;margin-bottom:4px;"><span>🌧️</span><div>班里分组总有人被剩下…</div></div>
-        <div class="guide-q">这条最让你在意的是哪点？想搞明白，还是想解决？</div>
-        <div class="tri">
-          <button class="b-push" onclick="go('flow-define')">推进 ➡️</button>
-          <button class="b-drop">放弃 🗑️</button>
-          <button class="b-arc">归档 📥</button>
-        </div>
+      <div class="pool-tabs" id="pool-tabs">
+        <button class="ptab on" data-filter="pending" onclick="setPoolFilter('pending',this)">待分拣</button>
+        <button class="ptab" data-filter="push" onclick="setPoolFilter('push',this)">已推进</button>
+        <button class="ptab" data-filter="archive" onclick="setPoolFilter('archive',this)">归档</button>
+        <button class="ptab" data-filter="drop" onclick="setPoolFilter('drop',this)">放弃</button>
       </div>
-      <div class="card">
-        <div class="rc" style="box-shadow:none;padding:0;margin-bottom:4px;"><span>🔆</span><div>想搞清楚短视频为什么让人停不下来</div></div>
-        <div class="guide-q">是想写个研究报告，还是想少刷点？</div>
-        <div class="tri">
-          <button class="b-push" onclick="go('flow-define')">推进 ➡️</button>
-          <button class="b-drop">放弃 🗑️</button>
-          <button class="b-arc">归档 📥</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="rc" style="box-shadow:none;padding:0;margin-bottom:4px;"><span>🌧️</span><div>和妈吵架后一直堵着…</div></div>
-        <div class="guide-q">现在想处理，还是先放着？</div>
-        <div class="tri">
-          <button class="b-push" onclick="go('flow-define')">推进 ➡️</button>
-          <button class="b-drop">放弃 🗑️</button>
-          <button class="b-arc">归档 📥</button>
-        </div>
-      </div>
+      <div id="pool-list"></div>
       <div class="note">只推想定义的；弃/存都不勉强 💡</div>
     </div>
 
@@ -182,7 +57,6 @@
     <div class="screen" id="s-mine">
       <div class="s-head">🌱 我的成长</div>
 
-      <!-- 对话式姓名输入（仅首次） -->
       <div class="card" id="conv-card">
         <div class="conv">
           <div class="bub sys">👋 嘿，第一次见你～ 我该怎么称呼你？</div>
@@ -193,7 +67,6 @@
         </div>
       </div>
 
-      <!-- 问候（输入后直接显示在背景上，无对话框） -->
       <div id="greet" style="display:none;padding:2px 2px 18px;">
         <div style="font-size:22px;font-weight:800;color:var(--ink);line-height:1.4;">你好，<span id="greet-name" style="color:var(--green);font-size:32px;font-weight:800;"></span> 👋</div>
         <div style="font-size:17px;font-weight:600;color:var(--ink);margin-top:10px;">本周我来帮助你练习思维肌肉 💪</div>
@@ -201,45 +74,23 @@
 
       <div class="card">
         <div class="grow">
-          <div class="ring"><span class="ring-num">68</span></div>
+          <div class="ring"><span class="ring-num" id="grow-num">0</span></div>
           <div>
-            <div style="font-weight:700;">思维肌肉本月 +12%</div>
-            <div class="note" style="padding:0;margin:0;text-align:left;">定义质量↑ · 验证诚实度↑</div>
+            <div style="font-weight:700;" id="grow-label">思维肌肉·起步中</div>
+            <div class="note" style="padding:0;margin:0;text-align:left;" id="grow-sub">先捕捉几条，再来看变化</div>
           </div>
         </div>
       </div>
 
       <div class="section-title">能力雷达</div>
       <div class="card">
-        <svg viewBox="-30 0 290 210" width="100%" style="display:block;">
-          <!-- 网格菱形 -->
-          <polygon points="130,20 210,100 130,180 50,100" fill="none" stroke="#e7ece9" stroke-width="1.5"/>
-          <polygon points="130,60 170,100 130,140 90,100" fill="none" stroke="#e7ece9" stroke-width="1.5"/>
-          <!-- 轴线 -->
-          <line x1="130" y1="100" x2="130" y2="20" stroke="#e7ece9" stroke-width="1.5"/>
-          <line x1="130" y1="100" x2="210" y2="100" stroke="#e7ece9" stroke-width="1.5"/>
-          <line x1="130" y1="100" x2="130" y2="180" stroke="#e7ece9" stroke-width="1.5"/>
-          <line x1="130" y1="100" x2="50" y2="100" stroke="#e7ece9" stroke-width="1.5"/>
-          <!-- 数据多边形 -->
-          <polygon points="130,42.4 178,100 130,136 86,100" fill="rgba(14,107,80,.16)" stroke="#0E6B50" stroke-width="2"/>
-          <!-- 顶点 -->
-          <circle cx="130" cy="42.4" r="3.5" fill="#0E6B50"/>
-          <circle cx="178" cy="100" r="3.5" fill="#0E6B50"/>
-          <circle cx="130" cy="136" r="3.5" fill="#FF8A5B"/>
-          <circle cx="86" cy="100" r="3.5" fill="#0E6B50"/>
-          <!-- 标签 + 数字（白色描边轮廓，保证清晰） -->
-          <text x="130" y="14" text-anchor="middle" font-size="12" font-weight="800" fill="#1c2b25" stroke="#fff" stroke-width="3" paint-order="stroke">🔍 发现 72</text>
-          <text x="218" y="104" text-anchor="start" font-size="12" font-weight="800" fill="#1c2b25" stroke="#fff" stroke-width="3" paint-order="stroke">💡 定义 60</text>
-          <text x="130" y="202" text-anchor="middle" font-size="12" font-weight="800" fill="#FF8A5B" stroke="#fff" stroke-width="3" paint-order="stroke">🧪 验证 45</text>
-          <text x="44" y="104" text-anchor="end" font-size="12" font-weight="800" fill="#1c2b25" stroke="#fff" stroke-width="3" paint-order="stroke">🎯 校准 55</text>
-        </svg>
+        <svg id="radar-svg" viewBox="-30 0 290 210" width="100%" style="display:block;"></svg>
         <div class="radar-cap">四维能力（满分 100）· 橙色=最弱项，优先练 💪</div>
       </div>
 
       <div class="section-title">判断日志（长期资产）</div>
       <div class="card">
-        <div class="note" style="padding:0;text-align:left;">📌 你总在"关系类"问题高估 AI，在"学习类"低估自己。</div>
-        <div class="note" style="padding:6px 0 0;text-align:left;">📌 本月主动探查偏少（仅 2 次），多留意"想搞明白"的瞬间。</div>
+        <div id="judgment-list"></div>
       </div>
       <div class="note">成长是自己的，不打卡不排名 🌿</div>
     </div>
@@ -257,130 +108,65 @@
       <div class="sheet-handle"></div>
       <div class="sheet-title">怎么捕捉这一刻？</div>
       <div class="sheet-grid">
-        <button onclick="pickSource('✍️ 写下来')"><span class="em">✍️</span>写下来</button>
-        <button onclick="pickSource('🎙️ 语音')"><span class="em">🎙️</span>语音</button>
-        <button onclick="pickSource('📷 拍摄')"><span class="em">📷</span>拍摄</button>
-        <button onclick="pickSource('🔗 链接')"><span class="em">🔗</span>链接</button>
+        <button onclick="pickSource('text')"><span class="em">✍️</span>写下来</button>
+        <button onclick="pickSource('voice')"><span class="em">🎙️</span>语音</button>
+        <button onclick="pickSource('photo')"><span class="em">📷</span>拍摄</button>
+        <button onclick="pickSource('link')"><span class="em">🔗</span>链接</button>
       </div>
     </div>
+
+    <!-- 隐藏文件输入（拍摄/上传） -->
+    <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)" />
+    <input type="file" id="photo-input-lib" accept="image/*" style="display:none" onchange="onPhotoChosen(event)" />
 
     <!-- ================= 流程 Overlay: 定义 ================= -->
     <div class="overlay" id="flow-define">
       <div class="ov-head">← 定义引导 <span style="margin-left:auto;font-size:12px;color:var(--muted)">轻量 · 不强迫</span></div>
-      <div class="ov-body">
-        <div class="step-dot"><i class="on"></i><i></i><i></i><i></i></div>
-        <div class="big-q">第 1 步 · 真正让你在意的是哪一点？💡</div>
-        <div class="guide-q">不是整个事件，是里面最扎你的那小块。</div>
-        <textarea class="cap-input" placeholder="例：不是『分组不好玩』，是『我怕自己也被剩下』"></textarea>
-        <button class="btn" onclick="nextDefine()">下一步 →</button>
-        <div class="guide-q" style="margin-top:10px;">（共 4 步：核心 → 目标 → 卡点 → 成功标准，可随时退出）</div>
-      </div>
+      <div class="ov-body" id="define-body"></div>
     </div>
 
-    <!-- ================= 流程 Overlay: AI 协作 ================= -->
+    <!-- ================= 流程 Overlay: 先想再做（P1 门禁 + 验证规划） ================= -->
     <div class="overlay" id="flow-collab">
-      <div class="ov-head">← AI 协作 <span style="margin-left:auto;font-size:12px;color:var(--muted)">先判再看</span></div>
-      <div class="ov-body">
-        <div class="warn">🛑 先写下你的倾向，再看 AI —— 不然会被第一个答案锚定。</div>
-        <div class="guide-q">你倾向哪个方向？为什么？</div>
-        <textarea class="cap-input" placeholder="我的直觉：先观察一次真实分组，再决定要不要说出来"></textarea>
-        <button class="btn" onclick="showAI()">我写好了，看 AI 的视角 →</button>
-        <div id="ai-block" style="display:none;">
-          <div class="user-msg">🧑 我：先观察一次真实分组，再决定说不说。</div>
-          <div class="ai-msg">🤖 AI 给了 3 条路径：① 直接沟通 ② 观察后写观察笔记 ③ 找信任的人聊。</div>
-          <div class="guide-q" style="color:var(--green)">Argue · 理清 / 质疑 / 证据</div>
-          <div class="ai-msg">🔍 理清：你怕的"被剩下"是事实，还是猜测？</div>
-          <div class="ai-msg">⚡ 质疑：你假定"说出来会尴尬"——一定成立吗？上次类似情况怎样？</div>
-          <div class="ai-msg">🧾 证据：你有哪次"说出来反而好了"的例子？缺什么证据？</div>
-          <div class="guide-q" style="color:var(--green)">验证规划（进验证前的脚手架）</div>
-          <div class="ai-msg">🧪 计划：这周观察 2 次分组，记下谁被剩、自己感受；预期"说出来会尴尬"，实际？证据够再决定说不说。</div>
-          <button class="btn coral" onclick="go('flow-verify')">去验证 →</button>
-        </div>
-      </div>
+      <div class="ov-head">← 先想再做 <span style="margin-left:auto;font-size:12px;color:var(--muted)">先判再看</span></div>
+      <div class="ov-body" id="collab-body"></div>
     </div>
 
     <!-- ================= 流程 Overlay: 验证 ================= -->
     <div class="overlay" id="flow-verify">
       <div class="ov-head">← 验证 <span style="margin-left:auto;font-size:12px;color:var(--muted)">记有效/错误</span></div>
-      <div class="ov-body">
-        <div class="guide-q">行动（最小一步）：</div>
-        <textarea class="cap-input" placeholder="例：周二观察一次分组，记下感受"></textarea>
-        <div class="guide-q" style="margin-top:10px;">预期 vs 实际：</div>
-        <div class="user-msg">📝 预期：说出来会尴尬。实际：______</div>
-        <div class="guide-q">AI 建议有效 / 错误？</div>
-        <div class="chips"><button class="chip">✅ 有效</button><button class="chip">❌ 错误</button></div>
-        <div class="note" style="margin-top:10px;">高风险问题（资金/安全/法律/健康/重大业务）需先核对原始资料再闭环 ⚠️</div>
-        <button class="btn" onclick="go('s-mine')">完成，回我的 →</button>
-      </div>
+      <div class="ov-body" id="verify-body"></div>
     </div>
 
     <!-- ================= 流程 Overlay: 分享 ================= -->
     <div class="overlay" id="flow-share">
       <div class="ov-head">← 分享 artifact</div>
-      <div class="ov-body">
-        <div class="section-title">思考 artifact（想发就发）</div>
-        <div class="artifact">
-          我这周在琢磨：<b>班里分组总有人被剩下</b> 🔍<br/>
-          我的定义：<b>我怕自己也被剩下，不只是不好玩</b> 💡<br/>
-          我试了：<b>观察一次真实分组</b> 🧪<br/>
-          结果：<b>说出来没那么尴尬，反而有人附和</b> ✅
+      <div class="ov-body" id="share-body"></div>
+    </div>
+
+    <!-- ================= 年龄门禁 ================= -->
+    <div class="overlay active" id="age-gate">
+      <div class="ov-body" style="justify-content:center;display:flex;flex-direction:column;">
+        <div style="font-size:20px;font-weight:800;text-align:center;color:var(--green);margin-bottom:6px;">欢迎来到探奇 🔍</div>
+        <div style="font-size:14px;color:var(--ink);text-align:center;line-height:1.6;margin-bottom:18px;">一个练习思维肌肉的小地方。<br/>先确认一下你的年龄～</div>
+        <div class="guide-q">你是？</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn ghost" style="margin-top:6px;" onclick="setAge(false)">我已满 14 岁</button>
+          <button class="btn" style="margin-top:6px;" onclick="setAge(true)">我还不满 14 岁</button>
         </div>
-        <div class="guide-q" style="margin-top:10px;">公开默认，敏感内容走分组 / 私有。</div>
-        <div class="platforms">
-          <span class="pf">📕 小红书</span><span class="pf">📺 B站</span><span class="pf">💬 班级群</span>
+        <div id="guardian-box" style="display:none;margin-top:16px;">
+          <div class="warn">🔐 因为你未满 14 岁，需要监护人同意才能使用。</div>
+          <div class="guide-q">监护人手机号：</div>
+          <input id="guardian-phone" class="cap-input" style="min-height:46px;" placeholder="监护人手机号" />
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:10px;color:var(--ink);">
+            <input type="checkbox" id="guardian-agree" /> 我已获得监护人同意，监护人知晓并允许我使用探奇
+          </label>
+          <button class="btn coral" style="margin-top:12px;" onclick="confirmGuardian()">确认进入 →</button>
         </div>
-        <button class="btn coral" onclick="go('s-capture')">发布 ✨</button>
-        <button class="btn ghost" onclick="go('s-capture')">先不发自留 🌿</button>
       </div>
     </div>
 
   </div>
 </div>
-
-<script>
-  function go(id, btn){
-    if(id.startsWith('s-')){
-      document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-      document.getElementById(id).classList.add('active');
-      if(btn){document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
-    }
-    document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('active'));
-    if(id.startsWith('flow-')){document.getElementById(id).classList.add('active');}
-  }
-  function toggleFold(){
-    var b=document.getElementById('fold-body');
-    var t=document.querySelector('.fold-toggle');
-    if(b.style.display==='block'){b.style.display='none';t.textContent='最近捕捉 ▾';}
-    else{b.style.display='block';t.textContent='最近捕捉 ▴';}
-  }
-  function submitHome(){
-    var v=document.getElementById('home-input').value.trim();
-    if(!v){alert('先写点什么，或随便记一句纳闷的事 🌧️');return;}
-    alert('已记下：'+v.slice(0,20)+(v.length>20?'…':'')+'（低保真示意 → 进入捕捉池分拣）');
-    document.getElementById('home-input').value='';
-    go('s-pool');
-  }
-  function openSheet(){document.getElementById('sheet-mask').classList.add('active');document.getElementById('cap-sheet').classList.add('active');}
-  function setName(){
-    var v=document.getElementById('name-field').value.trim();
-    if(!v){return;}
-    document.getElementById('greet-name').textContent=v;
-    document.getElementById('conv-card').style.display='none';
-    document.getElementById('greet').style.display='block';
-  }
-  function closeSheet(){document.getElementById('sheet-mask').classList.remove('active');document.getElementById('cap-sheet').classList.remove('active');}
-  function pickSource(t){
-    closeSheet();
-    if(t.indexOf('写下来')>=0){go('s-capture');setTimeout(()=>document.getElementById('home-input').focus(),50);return;}
-    alert('已选择 '+t+' 捕捉（低保真示意）');
-  }
-  function nextDefine(){
-    document.querySelector('#flow-define .big-q').textContent='第 2 步 · 你希望这事变成什么样？🎯';
-    document.querySelector('#flow-define .step-dot').innerHTML='<i class="on"></i><i class="on"></i><i></i><i></i>';
-    document.querySelector('#flow-define .btn').setAttribute('onclick',"go('flow-collab')");
-    document.querySelector('#flow-define .btn').textContent='定义好了，去 AI 协作 →';
-  }
-  function showAI(){document.getElementById('ai-block').style.display='block';}
-</script>
+<script src="app.js"></script>
 </body>
 </html>

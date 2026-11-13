@@ -1,0 +1,14 @@
+{
+  "name": "探奇 Mind Gym",
+  "short_name": "探奇",
+  "description": "AI 时代练习思维肌肉：发现、定义、验证",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F5F7F5",
+  "theme_color": "#0E6B50",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
