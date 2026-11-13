@@ -23,12 +23,20 @@ function go(id, btn) {
   if (id === 's-home') renderHomeThreads();
   if (id === 's-pool') renderPool();
   if (id === 's-mine') renderMine();
+  updateFab();
   window.scrollTo(0, 0);
 }
 function setNav(id) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('on'));
   if (id === 's-home') document.querySelectorAll('.nav-item')[0].classList.add('on');
   if (id === 's-mine') document.querySelectorAll('.nav-item')[1].classList.add('on');
+}
+/* FAB 只在家页且无需分诊时显示，避免遮挡底部“下一步 / 整理一下”按钮导致无法点按 */
+function updateFab() {
+  const fab = el('fab'); if (!fab) return;
+  const homeActive = el('s-home').classList.contains('active');
+  const triageVisible = el('triage-entry') && el('triage-entry').classList.contains('show');
+  fab.style.display = (homeActive && !triageVisible) ? 'flex' : 'none';
 }
 function goHome() { go('s-home'); }
 function toast(msg) {
@@ -148,6 +156,7 @@ function renderHomeThreads() {
   const captured = DB.threads.filter(t => t.status === 'captured').length;
   el('threads-title').style.display = DB.threads.length ? 'block' : 'none';
   el('triage-entry').classList.toggle('show', captured > 0);
+  updateFab();
   if (!DB.threads.length) { list.innerHTML = ''; return; }
   list.innerHTML = DB.threads.map(t => {
     const emoji = t.sourceMode === 'active' ? '🔆' : '🌧️';
@@ -269,7 +278,7 @@ function renderStage() {
   }
   body += `<div class="summary-card" id="summary-card">${summaryHTML(t, m.key)}</div>`;
   el('stage-body').innerHTML = body;
-  el('stage-footer').innerHTML = `<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button>`;
+  el('stage-footer').innerHTML = `<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button><div class="next-hint" id="next-hint"></div>`;
   updateGate();
 }
 function stepHTML(label, hint, id, val) {
@@ -321,10 +330,12 @@ function updateGate() {
   const t = getCur(); if (!t) return;
   const m = STAGE_META[curStage].key;
   const nb = el('next-btn');
+  const hint = el('next-hint');
   if (m === 'collab') {
     const lean = (el('f-leaning').value || '').trim();
     el('collab-options').style.display = lean.length >= 8 ? 'block' : 'none';
     nb.disabled = lean.length < 8;
+    if (hint) hint.textContent = lean.length < 8 ? '先写下你的判断（至少 8 个字），下一步才会亮起' : '';
   } else if (m === 'verify') {
     const act = (el('f-action').value || '').trim();
     const act2 = (el('f-actual').value || '').trim();
@@ -332,7 +343,12 @@ function updateGate() {
     const src = (el('f-source').value || '').trim();
     nb.disabled = !(act && act2) || (risk && !src);
     el('risk-bar').style.display = risk ? 'block' : 'none';
-  } else { nb.disabled = false; }
+    if (hint) {
+      if (!(act && act2)) hint.textContent = '记一个“动作”和“真实结果”，下一步才会亮起';
+      else if (risk && !src) hint.textContent = '这条涉及风险，先贴一个来源再收尾';
+      else hint.textContent = '';
+    }
+  } else { nb.disabled = false; if (hint) hint.textContent = ''; }
 }
 function collectStage() {
   const t = getCur(); if (!t) return;
