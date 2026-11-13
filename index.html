@@ -14,133 +14,104 @@
 <div class="wrap">
   <div class="phone">
 
-    <!-- ================= 首页 · 捕捉（Google 式极简） ================= -->
-    <div class="screen active" id="s-capture">
+    <!-- ================= 首页 · 捕捉 ================= -->
+    <div class="screen active" id="s-home">
       <div class="home">
         <div class="wordmark">探奇<small>Mind Gym</small></div>
-        <div class="prompt">今天，什么让你 <b>纳闷 / 好奇 / 卡住</b>？</div>
+        <div class="prompt">今天，什么让你 <b>纳闷/好奇/卡住</b>？</div>
+        <div class="mode-toggle" id="mode-toggle">
+          <button class="mode-chip on" data-mode="passive" onclick="setMode('passive',this)">🌧️ 偶遇</button>
+          <button class="mode-chip" data-mode="active" onclick="setMode('active',this)">🔆 探索</button>
+        </div>
         <div class="search">
-          <button class="in-plus" onclick="openSheet()" title="多源捕捉">＋</button>
+          <button class="add-src" onclick="openSheet()" title="多源捕捉">＋</button>
           <textarea class="cap-input" id="home-input" placeholder="随手记，发现你身边的奇妙。"></textarea>
           <button class="send" onclick="submitHome()" title="记下来">✓</button>
         </div>
-        <div class="mode-toggle" id="mode-toggle">
-          <button class="mode-chip on" data-mode="passive" onclick="setMode('passive',this)">🌧️ 被动遇到</button>
-          <button class="mode-chip" data-mode="active" onclick="setMode('active',this)">🔆 主动探究</button>
-        </div>
-
+        <div class="home-feedback" id="home-feedback"></div>
         <div class="home-fold">
-          <button class="fold-toggle" onclick="toggleFold()">最近捕捉 ▾</button>
-          <div class="fold-body" id="fold-body">
-            <div class="recent" id="recent-list"></div>
-            <button class="btn ghost" onclick="go('s-pool')">去捕捉池分拣 →</button>
-          </div>
+          <div class="section-title" id="threads-title" style="display:none;">我的线索</div>
+          <div id="thread-list"></div>
+          <button class="triage-entry" id="triage-entry" style="display:none;" onclick="go('s-pool')">整理一下 →</button>
         </div>
       </div>
     </div>
 
-    <!-- ================= 池 / 分拣 ================= -->
+    <!-- ================= 整理（分诊） ================= -->
     <div class="screen" id="s-pool">
-      <div class="s-head">🗂️ 我的捕捉池</div>
-      <div class="pool-tabs" id="pool-tabs">
-        <button class="ptab on" data-filter="pending" onclick="setPoolFilter('pending',this)">待分拣</button>
-        <button class="ptab" data-filter="push" onclick="setPoolFilter('push',this)">已推进</button>
-        <button class="ptab" data-filter="archive" onclick="setPoolFilter('archive',this)">归档</button>
-        <button class="ptab" data-filter="drop" onclick="setPoolFilter('drop',this)">放弃</button>
+      <div class="page-head">
+        <button class="back" onclick="goHome()">←</button>
+        <span class="page-title">整理一下</span>
+        <span class="spacer"></span>
       </div>
+      <div class="pool-intro">不是每条都要深挖。你来决定：哪条值得继续，哪条先放下，哪条存着以后看。<br>只有你点 <b>推进</b> 的线索，才会进入下一步。</div>
       <div id="pool-list"></div>
-      <div class="note">只推想定义的；弃/存都不勉强 💡</div>
+    </div>
+
+    <!-- ================= 阶段（动态渲染） ================= -->
+    <div class="screen" id="s-stage">
+      <div class="chrome">
+        <button class="chrome-back" onclick="goHome()">← 家</button>
+        <div class="chrome-label" id="stage-label"></div>
+        <button class="chrome-save" onclick="saveDraft()" title="存草稿">💾</button>
+      </div>
+      <div class="stage-body" id="stage-body"></div>
+      <div class="stage-footer" id="stage-footer"></div>
     </div>
 
     <!-- ================= 我的 ================= -->
     <div class="screen" id="s-mine">
-      <div class="s-head">🌱 我的成长</div>
-
-      <div class="card" id="conv-card">
-        <div class="conv">
-          <div class="bub sys">👋 嘿，第一次见你～ 我该怎么称呼你？</div>
-        </div>
-        <div class="name-row" id="name-row">
+      <div class="page-head">
+        <button class="back" onclick="goHome()">←</button>
+        <span class="page-title">我的成长</span>
+        <span class="spacer"></span>
+      </div>
+      <div id="mine-greet"></div>
+      <div class="card" id="name-card" style="display:none;">
+        <div class="name-row">
           <input id="name-field" placeholder="输入你的名字…" />
           <button onclick="setName()">告诉我</button>
         </div>
       </div>
-
-      <div id="greet" style="display:none;padding:2px 2px 18px;">
-        <div style="font-size:22px;font-weight:800;color:var(--ink);line-height:1.4;">你好，<span id="greet-name" style="color:var(--green);font-size:32px;font-weight:800;"></span> 👋</div>
-        <div style="font-size:17px;font-weight:600;color:var(--ink);margin-top:10px;">本周我来帮助你练习思维肌肉 💪</div>
-      </div>
-
       <div class="card">
         <div class="grow">
           <div class="ring"><span class="ring-num" id="grow-num">0</span></div>
           <div>
-            <div style="font-weight:700;" id="grow-label">思维肌肉·起步中</div>
-            <div class="note" style="padding:0;margin:0;text-align:left;" id="grow-sub">先捕捉几条，再来看变化</div>
+            <div style="font-weight:700;" id="grow-label">思维肌肉</div>
+            <div class="note" style="padding:0;margin:0;text-align:left;" id="grow-sub">先去记下你的第一条线索吧</div>
           </div>
         </div>
       </div>
-
       <div class="section-title">能力雷达</div>
       <div class="card">
-        <svg id="radar-svg" viewBox="-30 0 290 210" width="100%" style="display:block;"></svg>
-        <div class="radar-cap">四维能力（满分 100）· 橙色=最弱项，优先练 💪</div>
+        <div id="radar-svg"></div>
+        <div class="note" id="radar-note" style="padding:8px 0 0;text-align:left;"></div>
       </div>
-
       <div class="section-title">判断日志（长期资产）</div>
       <div class="card">
-        <div id="judgment-list"></div>
+        <div id="judgment-list" class="note" style="padding:0;text-align:left;"></div>
       </div>
       <div class="note">成长是自己的，不打卡不排名 🌿</div>
     </div>
 
     <!-- ================= 底部导航 + 中央 FAB ================= -->
     <div class="nav">
-      <button class="nav-item on" onclick="go('s-capture',this)"><span class="ic">🏠</span>首页</button>
+      <button class="nav-item on" onclick="go('s-home',this)"><span class="ic">🏠</span>首页</button>
       <button class="nav-item" onclick="go('s-mine',this)"><span class="ic">🌱</span>我的</button>
     </div>
     <button class="fab" onclick="openSheet()">捕捉</button>
 
-    <!-- ================= 捕捉来源面板 ================= -->
+    <!-- ================= 多源捕捉面板 ================= -->
     <div class="sheet-mask" id="sheet-mask" onclick="closeSheet()"></div>
-    <div class="sheet" id="cap-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-title">怎么捕捉这一刻？</div>
-      <div class="sheet-grid">
-        <button onclick="pickSource('text')"><span class="em">✍️</span>写下来</button>
-        <button onclick="pickSource('voice')"><span class="em">🎙️</span>语音</button>
-        <button onclick="pickSource('photo')"><span class="em">📷</span>拍摄</button>
-        <button onclick="pickSource('link')"><span class="em">🔗</span>链接</button>
-      </div>
+    <div class="cap-sheet" id="cap-sheet">
+      <button class="sheet-opt" onclick="pickSource('write')">✍️ 写下来</button>
+      <button class="sheet-opt" onclick="pickSource('voice')">🎙️ 语音</button>
+      <button class="sheet-opt" onclick="pickSource('photo')">📷 拍摄</button>
+      <button class="sheet-opt" onclick="pickSource('link')">🔗 链接</button>
+      <button class="sheet-cancel" onclick="closeSheet()">取消</button>
     </div>
 
-    <!-- 隐藏文件输入（拍摄/上传） -->
     <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)" />
-    <input type="file" id="photo-input-lib" accept="image/*" style="display:none" onchange="onPhotoChosen(event)" />
-
-    <!-- ================= 流程 Overlay: 定义 ================= -->
-    <div class="overlay" id="flow-define">
-      <div class="ov-head">← 定义引导 <span style="margin-left:auto;font-size:12px;color:var(--muted)">轻量 · 不强迫</span></div>
-      <div class="ov-body" id="define-body"></div>
-    </div>
-
-    <!-- ================= 流程 Overlay: 先想再做（P1 门禁 + 验证规划） ================= -->
-    <div class="overlay" id="flow-collab">
-      <div class="ov-head">← 先想再做 <span style="margin-left:auto;font-size:12px;color:var(--muted)">先判再看</span></div>
-      <div class="ov-body" id="collab-body"></div>
-    </div>
-
-    <!-- ================= 流程 Overlay: 验证 ================= -->
-    <div class="overlay" id="flow-verify">
-      <div class="ov-head">← 验证 <span style="margin-left:auto;font-size:12px;color:var(--muted)">记有效/错误</span></div>
-      <div class="ov-body" id="verify-body"></div>
-    </div>
-
-    <!-- ================= 流程 Overlay: 分享 ================= -->
-    <div class="overlay" id="flow-share">
-      <div class="ov-head">← 分享 artifact</div>
-      <div class="ov-body" id="share-body"></div>
-    </div>
 
     <!-- ================= 年龄门禁 ================= -->
     <div class="overlay active" id="age-gate">
