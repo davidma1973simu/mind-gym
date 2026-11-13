@@ -21,14 +21,13 @@
         <div class="prompt">今天，什么让你 <b>纳闷 / 好奇 / 卡住</b>？</div>
         <div class="search">
           <button class="in-plus" onclick="openSheet()" title="多源捕捉">＋</button>
-          <textarea class="cap-input" id="home-input" placeholder="记录让你纳闷的东西，或者是有了一个新的想法…"></textarea>
+          <textarea class="cap-input" id="home-input" placeholder="随手记，发现你身边的奇妙。"></textarea>
           <button class="send" onclick="submitHome()" title="记下来">✓</button>
         </div>
         <div class="mode-toggle" id="mode-toggle">
           <button class="mode-chip on" data-mode="passive" onclick="setMode('passive',this)">🌧️ 被动遇到</button>
           <button class="mode-chip" data-mode="active" onclick="setMode('active',this)">🔆 主动探究</button>
         </div>
-        <div class="home-hint">随手记，不用想清楚 📡</div>
 
         <div class="home-fold">
           <button class="fold-toggle" onclick="toggleFold()">最近捕捉 ▾</button>
