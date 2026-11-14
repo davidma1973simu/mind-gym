@@ -153,9 +153,12 @@ function railHTML(t) {
 }
 function renderHomeThreads() {
   const list = el('thread-list');
+  const anyThreads = DB.threads.length;
   const captured = DB.threads.filter(t => t.status === 'captured').length;
-  el('threads-title').style.display = DB.threads.length ? 'block' : 'none';
-  el('triage-entry').classList.toggle('show', captured > 0);
+  el('threads-title').style.display = anyThreads ? 'block' : 'none';
+  const te = el('triage-entry');
+  te.classList.toggle('show', anyThreads > 0);
+  te.textContent = captured > 0 ? '整理一下 →' : '查看线索池 →';
   updateFab();
   if (!DB.threads.length) { list.innerHTML = ''; return; }
   list.innerHTML = DB.threads.map(t => {
@@ -209,6 +212,7 @@ function openThread(id) {
   curThreadId = id;
   if (t.status === 'captured') { go('s-pool'); return; }
   curStage = t.stagePointer;
+  go('s-stage');
   renderStage();
 }
 function getCur() { return DB.threads.find(x => x.id === curThreadId); }
