@@ -117,7 +117,31 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .next-btn.coral{background:var(--coral);}
 .next-btn:disabled{background:#cdd5d1;color:#fff;}
 .next-btn:active{transform:scale(.98);}
+.next-btn.ghost{background:#fff;color:var(--green);border:1.5px solid var(--green);}
 .next-hint{font-size:12px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.4;}
+
+/* 阶段底部双按钮（上一步 / 下一步） */
+.foot-row{display:flex;gap:10px;align-items:stretch;}
+.foot-row .next-btn{flex:1;}
+
+/* 阶段流程步进器（让“流程”长在体验里） */
+.stepper{display:flex;align-items:center;gap:4px;margin:2px 0 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.stepper .stp{flex:0 0 auto;font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;background:#eef1f0;color:var(--muted);white-space:nowrap;}
+.stepper .stp.done{background:var(--green-soft);color:var(--green);}
+.stepper .stp.on{background:var(--green);color:#fff;}
+.stepper .stp-line{flex:1 1 auto;height:2px;background:var(--line);min-width:10px;}
+
+/* 问题卡（每步要回答的问题，显性展示） */
+.qcard{background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 5px rgba(16,40,32,.05);border-left:4px solid var(--green);}
+.qcard-title{font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px;}
+.qcard .qlist{margin:0;padding-left:18px;}
+.qcard .qlist li{font-size:13px;color:var(--ink);line-height:1.6;margin-bottom:3px;}
+
+/* 上一步（chrome） */
+.chrome-prev{border:none;background:none;font-size:13px;color:var(--muted);font-weight:700;padding:0 6px;flex:0 0 auto;}
+
+/* 复选框品牌色（避免 iOS 默认蓝） */
+.stage-step input[type=checkbox]{accent-color:var(--green);width:18px;height:18px;flex:0 0 auto;}
 
 /* ===== 底部导航 + 中央 FAB ===== */
 .nav{position:absolute;left:0;right:0;bottom:0;height:64px;background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;padding:0 28px;z-index:15;}

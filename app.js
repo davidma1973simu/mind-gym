@@ -219,13 +219,21 @@ function getCur() { return DB.threads.find(x => x.id === curThreadId); }
 
 const STAGE_META = {
   2: { key: 'define', label: '定义 · 第2步/共5', why: '把一个“说不清哪儿怪”的感觉，变成一句能去验证的话。这是“洞察 / 定义”的练习。',
-       help: '① 核心：到底在困惑什么？\n② 目标：你想弄明白啥？\n③ 卡点：现在卡住你的是哪一点？\n④ 标准：怎样算弄明白了？', nextLabel: '下一步：先写下你自己的判断，再看几种思路 →' },
+       help: '① 核心：到底在困惑什么？\n② 目标：你想弄明白啥？\n③ 卡点：现在卡住你的是哪一点？\n④ 标准：怎样算弄明白了？',
+       qs: ['到底在困惑什么？（核心）', '你想弄明白啥？（目标）', '现在卡住你的是哪一点？（卡点）', '怎样算弄明白了？（标准）'],
+       nextLabel: '下一步：先写下你自己的判断，再看几种思路 →' },
   3: { key: 'collab', label: '协作 · 第3步/共5', why: '在瞅任何“答案”之前，先说出你自己的判断和理由。这是不被 AI 带着走的关键一步。',
-       help: '写下你的初步想法和为什么。下面会列出几种思路路径（M1 先用示例填充）。记住：你的判断先到，别人的后到。', nextLabel: '下一步：去做点什么，验证一下你的想法 →' },
+       help: '写下你的初步想法和为什么。下面会列出几种思路路径（M1 先用示例填充）。记住：你的判断先到，别人的后到。',
+       qs: ['先写下你自己的判断 + 理由（你的想法先到，别人的后到）', '这条涉及 钱 / 安全 / 健康 / 法律？'],
+       nextLabel: '下一步：去做点什么，验证一下你的想法 →' },
   4: { key: 'verify', label: '验证 · 第4步/共5', why: '想法对不对，得试试才知道。做了啥、你以为会怎样、实际怎样、你判断对了没。',
-       help: '记一个动作 + 你预期的结果 + 真实结果。如果是钱 / 安全 / 健康 / 法律类的高风险，必须先查来源才能收尾。', nextLabel: '下一步：看看怎么把这几步练得更顺 →' },
+       help: '记一个动作 + 你预期的结果 + 真实结果。如果是钱 / 安全 / 健康 / 法律类的高风险，必须先查来源才能收尾。',
+       qs: ['做了啥？（一个最小可行动作）', '你预期会怎样？', '实际怎样？', '你的判断：有效，还是错了？'],
+       nextLabel: '下一步：看看怎么把这几步练得更顺 →' },
   5: { key: 'improve', label: '进阶 · 第5步/共5', why: '不是打分，是支招：发现、定义、验证这三步，下次怎么更利索。',
-       help: '回头看这条线索：捕捉时是不是太犹豫？定义时核心清楚吗？验证时查来源了吗？挑一个点，下次试试。', nextLabel: '收尾啦 🎉 回到首页 →' }
+       help: '回头看这条线索：捕捉时是不是太犹豫？定义时核心清楚吗？验证时查来源了吗？挑一个点，下次试试。',
+       qs: ['下次试一点：挑一个最想改进的点'],
+       nextLabel: '收尾啦 🎉 回到首页 →' }
 };
 
 function renderStage() {
@@ -234,6 +242,8 @@ function renderStage() {
   el('stage-label').textContent = m.label;
   let body = `<div class="stage-why">${m.why}<button class="help-pill" onclick="toggleHelp()">?</button></div>
     <div class="help-sheet" id="help-sheet">${m.help.replace(/\n/g, '<br>')}</div>`;
+  body += stepperHTML(curStage);
+  body += qcardHTML(m.qs);
   const d = t.stageData[m.key] || {};
   if (m.key === 'define') {
     body += `<div class="stage-form">
@@ -255,7 +265,7 @@ function renderStage() {
         </label>
       </div>
       <div id="collab-options" style="display:${d.leaning ? 'block' : 'none'};">
-        <div class="guide-q">几种思路路径（示例 · M1 占位，M2 由 AI 生成）</div>
+        <div class="guide-q">AI 思路路径（M1 为示例占位 · M2 接入真实 AI 与你协作）</div>
         <div class="ai-msg">① 换个角度：把问题反过来想，会怎样？</div>
         <div class="ai-msg">② 拆小一点：能不能先验证其中最小的一块？</div>
         <div class="ai-msg">③ 找真人聊聊：谁可能真遇过这回事？</div>
@@ -282,8 +292,30 @@ function renderStage() {
   }
   body += `<div class="summary-card" id="summary-card">${summaryHTML(t, m.key)}</div>`;
   el('stage-body').innerHTML = body;
-  el('stage-footer').innerHTML = `<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button><div class="next-hint" id="next-hint"></div>`;
+  const prevBtn = curStage > 2 ? `<button class="next-btn ghost" id="prev-btn" onclick="prevStage()">‹ 上一步</button>` : '';
+  el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>`;
+  el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
   updateGate();
+}
+function stepperHTML(cur) {
+  const STEPS = ['捕捉', '定义', '协作', '验证', '进阶'];
+  let h = '<div class="stepper">';
+  STEPS.forEach((s, i) => {
+    const n = i + 1;
+    const cls = n < cur ? 'done' : (n === cur ? 'on' : '');
+    h += `<span class="stp ${cls}">${s}</span>`;
+    if (i < STEPS.length - 1) h += '<i class="stp-line"></i>';
+  });
+  return h + '</div>';
+}
+function qcardHTML(qs) {
+  if (!qs || !qs.length) return '';
+  return `<div class="qcard"><div class="qcard-title">这一步要回答的问题</div><ul class="qlist">${qs.map(q => `<li>${esc(q)}</li>`).join('')}</ul></div>`;
+}
+function prevStage() {
+  const t = getCur(); if (!t) return;
+  collectStage();
+  if (curStage > 2) { t.stagePointer = curStage - 1; curStage = curStage - 1; save(); renderStage(); }
 }
 function stepHTML(label, hint, id, val) {
   return `<div class="stage-step">
