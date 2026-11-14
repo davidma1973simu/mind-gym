@@ -101,6 +101,7 @@
       <button class="nav-item" onclick="go('s-mine',this)"><span class="ic">🌱</span>我的</button>
     </div>
     <button class="fab" onclick="openSheet()">捕捉</button>
+    <button class="ai-set-btn" id="ai-set-btn" style="display:none;" onclick="openSettings()">⚙️ AI 设置</button>
 
     <!-- ================= 多源捕捉面板 ================= -->
     <div class="sheet-mask" id="sheet-mask" onclick="closeSheet()"></div>
@@ -133,6 +134,38 @@
           </label>
           <button class="btn coral" style="margin-top:12px;" onclick="confirmGuardian()">确认进入 →</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ================= AI 设置 ================= -->
+    <div class="overlay" id="settings-gate">
+      <div class="ov-body">
+        <div class="page-head" style="position:static;background:none;height:auto;margin-bottom:6px;">
+          <button class="back" onclick="closeSettings()">←</button>
+          <span class="page-title">AI 设置</span>
+          <span class="spacer"></span>
+        </div>
+        <div class="warn">🔐 你的 API Key 只保存在这台设备（浏览器本地 localStorage），不会上传任何服务器。探奇本身不内置 AI，所有 AI 协作都由你自己的 Key 完成。</div>
+        <div class="card">
+          <div class="guide-q">AI 服务</div>
+          <select id="ai-provider" class="set-select" onchange="onProviderChange()">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">自定义（填 Base URL）</option>
+          </select>
+          <div id="ai-base-wrap" style="display:none;margin-top:12px;">
+            <div class="guide-q">Base URL</div>
+            <input id="ai-base" class="set-input" placeholder="https://..." />
+          </div>
+          <div class="guide-q" style="margin-top:12px;">API Key</div>
+          <div style="display:flex;gap:8px;align-items:stretch;">
+            <input id="ai-key" type="password" class="set-input" style="flex:1;" placeholder="粘贴你的 API Key" />
+            <button class="ai-key-eye" id="ai-eye" onclick="toggleKey()">显示</button>
+          </div>
+          <button class="btn" style="margin-top:18px;" onclick="saveAiSettings()">保存</button>
+        </div>
+        <div class="note" id="ai-status-note" style="padding:8px 4px;"></div>
+        <div class="note">没有 Key？先用 M1 示例路径练习，不影响完整闭环 🌿</div>
       </div>
     </div>
 

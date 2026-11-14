@@ -151,6 +151,20 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .fab{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);width:66px;height:66px;border-radius:50%;background:var(--green);color:#fff;border:none;font-size:17px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(14,107,80,.45);z-index:18;line-height:1;}
 .fab:active{transform:translateX(-50%) scale(.94);}
 
+/* 首页 AI 设置入口（右上角） */
+.ai-set-btn{position:absolute;top:14px;right:14px;z-index:16;border:1.5px solid var(--green);background:#fff;color:var(--green);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700;display:none;align-items:center;gap:4px;box-shadow:0 2px 8px rgba(16,40,32,.08);}
+.ai-set-btn.show{display:flex;}
+.ai-set-btn:active{transform:scale(.96);}
+
+/* AI 设置面板输入 */
+.set-input,.set-select{border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:11px 13px;font-size:15px;color:var(--ink);width:100%;font-family:inherit;}
+.set-input:focus,.set-select:focus{outline:none;border-color:var(--green);}
+.ai-key-eye{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:0 14px;font-size:14px;font-weight:700;color:var(--green);flex:0 0 auto;}
+
+/* 协作屏 AI 状态条 */
+.ai-note{font-size:12px;color:var(--muted);background:#f4f7f5;border-radius:12px;padding:9px 11px;margin:4px 0 10px;line-height:1.5;}
+.ai-ready{font-size:12px;color:var(--green);background:var(--green-soft);border-radius:12px;padding:9px 11px;margin:4px 0 10px;line-height:1.5;}
+
 /* ===== 捕捉来源面板 ===== */
 .sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.28);z-index:25;display:none;}
 .sheet-mask.active{display:block;}

@@ -24,6 +24,7 @@ function go(id, btn) {
   if (id === 's-pool') renderPool();
   if (id === 's-mine') renderMine();
   updateFab();
+  updateAiBtn();
   window.scrollTo(0, 0);
 }
 function setNav(id) {
@@ -37,6 +38,61 @@ function updateFab() {
   const homeActive = el('s-home').classList.contains('active');
   const triageVisible = el('triage-entry') && el('triage-entry').classList.contains('show');
   fab.style.display = (homeActive && !triageVisible) ? 'flex' : 'none';
+}
+/* 首页右上角 AI 设置按钮：仅首页显示，连好 Key 后显示 ✓ */
+function updateAiBtn() {
+  const btn = el('ai-set-btn'); if (!btn) return;
+  const homeActive = el('s-home').classList.contains('active');
+  const hasKey = !!(DB.settings && DB.settings.aiKey);
+  btn.classList.toggle('show', homeActive);
+  btn.innerHTML = hasKey ? '⚙️ AI ✓' : '⚙️ AI 设置';
+}
+
+/* ---------- AI 设置（用户自带 Key，本地存储） ---------- */
+function openSettings() {
+  const s = DB.settings || {};
+  el('ai-provider').value = s.aiProvider || 'deepseek';
+  el('ai-base').value = s.aiBase || '';
+  el('ai-key').value = s.aiKey || '';
+  el('ai-base-wrap').style.display = (s.aiProvider === 'custom') ? 'block' : 'none';
+  renderAiStatus();
+  el('settings-gate').classList.add('active');
+}
+function closeSettings() { el('settings-gate').classList.remove('active'); }
+function onProviderChange() {
+  const p = el('ai-provider').value;
+  el('ai-base-wrap').style.display = p === 'custom' ? 'block' : 'none';
+}
+function toggleKey() {
+  const i = el('ai-key'); const e = el('ai-eye');
+  if (i.type === 'password') { i.type = 'text'; e.textContent = '隐藏'; }
+  else { i.type = 'password'; e.textContent = '显示'; }
+}
+function saveAiSettings() {
+  const provider = el('ai-provider').value;
+  const base = el('ai-base').value.trim();
+  const key = el('ai-key').value.trim();
+  if (!key) { toast('先填 API Key'); return; }
+  if (provider === 'custom' && !base) { toast('自定义需填 Base URL'); return; }
+  DB.settings = DB.settings || {};
+  DB.settings.aiProvider = provider;
+  DB.settings.aiBase = base;
+  DB.settings.aiKey = key;
+  save();
+  renderAiStatus();
+  updateAiBtn();
+  toast('已保存 🔐');
+  setTimeout(closeSettings, 700);
+}
+function renderAiStatus() {
+  const s = DB.settings || {};
+  const note = el('ai-status-note');
+  if (s.aiKey) {
+    const names = { deepseek: 'DeepSeek', openai: 'OpenAI', custom: '自定义' };
+    note.innerHTML = `✅ 已连接：${names[s.aiProvider] || '自定义'} · Key 已保存在本地`;
+  } else {
+    note.innerHTML = '⚠️ 尚未设置 API Key';
+  }
 }
 function goHome() { go('s-home'); }
 function toast(msg) {
@@ -265,6 +321,7 @@ function renderStage() {
         </label>
       </div>
       <div id="collab-options" style="display:${d.leaning ? 'block' : 'none'};">
+        ${aiStatusLine()}
         <div class="guide-q">AI 思路路径（M1 为示例占位 · M2 接入真实 AI 与你协作）</div>
         <div class="ai-msg">① 换个角度：把问题反过来想，会怎样？</div>
         <div class="ai-msg">② 拆小一点：能不能先验证其中最小的一块？</div>
@@ -311,6 +368,14 @@ function stepperHTML(cur) {
 function qcardHTML(qs) {
   if (!qs || !qs.length) return '';
   return `<div class="qcard"><div class="qcard-title">这一步要回答的问题</div><ul class="qlist">${qs.map(q => `<li>${esc(q)}</li>`).join('')}</ul></div>`;
+}
+function aiStatusLine() {
+  const s = DB.settings || {};
+  if (s.aiKey) {
+    const names = { deepseek: 'DeepSeek', openai: 'OpenAI', custom: '自定义' };
+    return `<div class="ai-ready">✅ 你的 AI 已连接（${names[s.aiProvider] || '自定义'}）。M2 将在这里真正与你协作：理清 / 质疑 / 找证据。</div>`;
+  }
+  return `<div class="ai-note">🔑 还没填 AI Key？在首页右上角 ⚙️ AI 设置 里填一个，M2 就能真的和你一起想了。</div>`;
 }
 function prevStage() {
   const t = getCur(); if (!t) return;
@@ -492,6 +557,7 @@ function drawRadar(vals) {
 /* ---------- 启动 ---------- */
 function init() {
   renderHomeThreads();
+  updateAiBtn();
   if (!DB.user.ageConfirmed) el('age-gate').classList.add('active');
   else el('age-gate').classList.remove('active');
 }
