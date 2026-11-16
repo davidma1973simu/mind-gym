@@ -5,6 +5,23 @@ let mode = 'passive';          // 捕捉模式：passive 偶遇 / active 探索
 let curThreadId = null;        // 当前打开的线索
 let curStage = null;           // 当前阶段指针（2~5）
 let foldOpen = false;          // 首页“我的探索”折叠状态（默认收起）
+let aboutIdx = 0;              // 首页 About 轮播当前索引
+let aboutTimer = null;         // 自动轮播定时器
+/* About 轮播：4 张，目的/价值/流程/姿态。文案面向 AI-native 青少年：短句、同盟者口吻、不上纲上线。 */
+const ABOUT_SLIDES = [
+  { kicker: '为什么 · WHY', emoji: '🧠',
+    title: '答案越来越好找，', title2: '会问问题才是超能力。',
+    body: 'AI 能秒回，但“到底哪里不对劲、该验证什么”得你自己长出来。探奇就是练这块肌肉的。' },
+  { kicker: '练什么 · VALUE', emoji: '⚡',
+    title: '四件 AI 替不了的事。', title2: '',
+    body: '发现 → 定义 → 验证 → 校准判断。每周练一点点，看得见自己变强。' },
+  { kicker: '怎么走 · FLOW', emoji: '🧭',
+    title: '5 步，一个小疑问走到底。', title2: '',
+    body: '随手捕捉 → 挑值得的 → 写下你的判断 → 做点什么验证 → 下次更顺。不打卡，不排名。' },
+  { kicker: '谁做主 · YOURS', emoji: '🔑',
+    title: '你的判断，先到。', title2: '',
+    body: '先看 AI 再下结论，容易被带着跑。这里永远是你先想、AI 后帮。你的 Key、你的数据，只在这台设备。' }
+];
 
 function load() {
   try {
@@ -21,7 +38,8 @@ function go(id, btn) {
   if (btn) { document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('on')); btn.classList.add('on'); }
   else if (id === 's-home') { setNav('s-home'); }
   else if (id === 's-mine') { setNav('s-mine'); }
-  if (id === 's-home') renderHomeThreads();
+  if (id !== 's-home') clearInterval(aboutTimer);
+  if (id === 's-home') { renderHomeThreads(); if (DB.user.ageConfirmed) restartAbout(); }
   if (id === 's-pool') renderPool();
   if (id === 's-mine') renderMine();
   updateFab();
@@ -116,6 +134,7 @@ function confirmGuardian() {
 function confirmAge() {
   DB.user.ageConfirmed = true; save();
   el('age-gate').classList.remove('active');
+  restartAbout();
 }
 
 /* ---------- 捕捉（首页） ---------- */
@@ -208,6 +227,23 @@ function railHTML(t) {
   }
   return h + '</div>';
 }
+/* ---------- 首页 About 轮播 ---------- */
+function renderAbout() {
+  const box = el('about-card'); if (!box) return;
+  const s = ABOUT_SLIDES[aboutIdx];
+  box.innerHTML = `
+    <div class="ab-kicker">${s.kicker}</div>
+    <div class="ab-emoji">${s.emoji}</div>
+    <div class="ab-title">${s.title}${s.title2 ? `<br>${s.title2}` : ''}</div>
+    <div class="ab-body">${s.body}</div>
+    <div class="ab-foot">
+      <div class="ab-dots">${ABOUT_SLIDES.map((_, i) => `<span class="ab-dot ${i === aboutIdx ? 'on' : ''}" onclick="event.stopPropagation();aboutGo(${i})"></span>`).join('')}</div>
+      <div class="ab-count">${aboutIdx + 1} / ${ABOUT_SLIDES.length}</div>
+    </div>`;
+}
+function aboutGo(i) { aboutIdx = (i + ABOUT_SLIDES.length) % ABOUT_SLIDES.length; renderAbout(); restartAbout(); }
+function restartAbout() { clearInterval(aboutTimer); aboutTimer = setInterval(() => aboutGo(aboutIdx + 1), 4200); }
+
 function toggleFold() {
   foldOpen = !foldOpen;
   el('fold-body').style.display = foldOpen ? 'block' : 'none';
@@ -562,9 +598,10 @@ function drawRadar(vals) {
 
 /* ---------- 启动 ---------- */
 function init() {
+  renderAbout();
   renderHomeThreads();
   updateAiBtn();
   if (!DB.user.ageConfirmed) el('age-gate').classList.add('active');
-  else el('age-gate').classList.remove('active');
+  else { el('age-gate').classList.remove('active'); restartAbout(); }
 }
 init();
