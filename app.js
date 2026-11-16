@@ -4,6 +4,7 @@ let DB = load();
 let mode = 'passive';          // 捕捉模式：passive 偶遇 / active 探索
 let curThreadId = null;        // 当前打开的线索
 let curStage = null;           // 当前阶段指针（2~5）
+let foldOpen = false;          // 首页“我的探索”折叠状态（默认收起）
 
 function load() {
   try {
@@ -151,7 +152,7 @@ function showFeedback(t) {
     <div class="fb-ok">已记下 ✅</div>
     <div class="fb-text">${esc(t.raw)}</div>
     <div class="fb-actions">
-      <button class="fb-go" onclick="go('s-pool')">放进线索池看看 →</button>
+      <button class="fb-go" onclick="go('s-pool')">放进探索池看看 →</button>
       <button class="fb-more" onclick="moreCapture()">再记一条</button>
     </div></div>`;
   fb.classList.add('show');
@@ -207,14 +208,19 @@ function railHTML(t) {
   }
   return h + '</div>';
 }
+function toggleFold() {
+  foldOpen = !foldOpen;
+  el('fold-body').style.display = foldOpen ? 'block' : 'none';
+  el('fold-chevron').textContent = foldOpen ? '▴' : '▾';
+}
 function renderHomeThreads() {
   const list = el('thread-list');
   const anyThreads = DB.threads.length;
   const captured = DB.threads.filter(t => t.status === 'captured').length;
-  el('threads-title').style.display = anyThreads ? 'block' : 'none';
+  el('fold-count').textContent = anyThreads;
   const te = el('triage-entry');
   te.classList.toggle('show', anyThreads > 0);
-  te.textContent = captured > 0 ? '整理一下 →' : '查看线索池 →';
+  te.textContent = captured > 0 ? `探索池 · ${captured} →` : '探索池 →';
   updateFab();
   if (!DB.threads.length) { list.innerHTML = ''; return; }
   list.innerHTML = DB.threads.map(t => {
@@ -237,7 +243,7 @@ function renderPool() {
   const pool = el('pool-list');
   const items = DB.threads.filter(t => t.status === 'captured');
   if (!items.length) {
-    pool.innerHTML = '<div class="pool-empty">都整理完啦 🌿<br>去首页记点新线索吧</div>';
+    pool.innerHTML = '<div class="pool-empty">都整理完啦 🌿<br>去首页记点新探索吧</div>';
     return;
   }
   pool.innerHTML = items.map(t => {
@@ -287,7 +293,7 @@ const STAGE_META = {
        qs: ['做了啥？（一个最小可行动作）', '你预期会怎样？', '实际怎样？', '你的判断：有效，还是错了？'],
        nextLabel: '下一步：看看怎么把这几步练得更顺 →' },
   5: { key: 'improve', label: '进阶 · 第5步/共5', why: '不是打分，是支招：发现、定义、验证这三步，下次怎么更利索。',
-       help: '回头看这条线索：捕捉时是不是太犹豫？定义时核心清楚吗？验证时查来源了吗？挑一个点，下次试试。',
+       help: '回头看这条探索：捕捉时是不是太犹豫？定义时核心清楚吗？验证时查来源了吗？挑一个点，下次试试。',
        qs: ['下次试一点：挑一个最想改进的点'],
        nextLabel: '收尾啦 🎉 回到首页 →' }
 };
@@ -506,14 +512,14 @@ function renderMine() {
   const score = Math.min(100, total * 10 + defined * 15 + verified * 20);
   el('ring-num').textContent = score;
   el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
-  el('grow-sub').textContent = total ? `发现 ${total} · 定义 ${defined} · 验证 ${verified}` : '先去记下你的第一条线索吧';
+  el('grow-sub').textContent = total ? `发现 ${total} · 定义 ${defined} · 验证 ${verified}` : '先去记下你的第一条探索吧';
   const disc = Math.min(100, total * 12);
   const def = total ? Math.round(defined / total * 100) : 0;
   const ver = total ? Math.round(verified / total * 100) : 0;
   const cal = total ? Math.round(judged / total * 100) : 0;
   el('radar-svg').innerHTML = drawRadar([disc, def, ver, cal]);
   const weak = Math.min(disc, def, ver, cal);
-  el('radar-note').textContent = total ? `最弱项已用橙色标出，优先练 💪（当前最弱 ${weak}）` : '记几条线索后，这里会画出你的能力雷达';
+  el('radar-note').textContent = total ? `最弱项已用橙色标出，优先练 💪（当前最弱 ${weak}）` : '记几条探索后，这里会画出你的能力雷达';
   const jl = el('judgment-list');
   if (!total) { jl.innerHTML = '还没有记录。<br>每次你“先写下自己的判断”，都会变成长期资产 📌'; }
   else {

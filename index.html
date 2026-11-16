@@ -30,9 +30,17 @@
         </div>
         <div class="home-feedback" id="home-feedback"></div>
         <div class="home-fold">
-          <div class="section-title" id="threads-title" style="display:none;">我的线索</div>
-          <div id="thread-list"></div>
-          <button class="triage-entry" id="triage-entry" style="display:none;" onclick="go('s-pool')">整理一下 →</button>
+          <div class="fold-bar">
+            <div class="fold-main" onclick="toggleFold()">
+              <span class="fold-title">我的探索</span>
+              <span class="fold-count" id="fold-count">0</span>
+              <span class="fold-chevron" id="fold-chevron">▾</span>
+            </div>
+            <button class="triage-entry pool-link" id="triage-entry" onclick="go('s-pool')">探索池 →</button>
+          </div>
+          <div class="fold-body" id="fold-body" style="display:none;">
+            <div id="thread-list"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -41,10 +49,10 @@
     <div class="screen" id="s-pool">
       <div class="page-head">
         <button class="back" onclick="goHome()">←</button>
-        <span class="page-title">整理一下</span>
+        <span class="page-title">探索池</span>
         <span class="spacer"></span>
       </div>
-      <div class="pool-intro">不是每条都要深挖。你来决定：哪条值得继续，哪条先放下，哪条存着以后看。<br>只有你点 <b>推进</b> 的线索，才会进入下一步。</div>
+      <div class="pool-intro">不是每条都要深挖。你来决定：哪条值得继续，哪条先放下，哪条存着以后看。<br>只有你点 <b>推进</b> 的探索，才会进入下一步。</div>
       <div id="pool-list"></div>
     </div>
 
@@ -79,7 +87,7 @@
           <div class="ring"><span class="ring-num" id="grow-num">0</span></div>
           <div>
             <div style="font-weight:700;" id="grow-label">思维肌肉</div>
-            <div class="note" style="padding:0;margin:0;text-align:left;" id="grow-sub">先去记下你的第一条线索吧</div>
+            <div class="note" style="padding:0;margin:0;text-align:left;" id="grow-sub">先去记下你的第一条探索吧</div>
           </div>
         </div>
       </div>
@@ -101,7 +109,7 @@
       <button class="nav-item" onclick="go('s-mine',this)"><span class="ic">🌱</span>我的</button>
     </div>
     <button class="fab" onclick="openSheet()">捕捉</button>
-    <button class="ai-set-btn" id="ai-set-btn" style="display:none;" onclick="openSettings()">⚙️ AI 设置</button>
+    <button class="ai-set-btn" id="ai-set-btn" onclick="openSettings()">⚙️ AI 设置</button>
 
     <!-- ================= 多源捕捉面板 ================= -->
     <div class="sheet-mask" id="sheet-mask" onclick="closeSheet()"></div>
