@@ -270,6 +270,7 @@ function renderHomeThreads() {
         ${railHTML(t)}
       </div>
       <div class="status-chip ${statusClass(t.status)}">${statusText(t.status)}</div>
+      <button class="del-btn" title="删除这条探索" onclick="event.stopPropagation();deleteThread('${t.id}')">🗑️</button>
     </div>`;
   }).join('');
 }
@@ -288,6 +289,7 @@ function renderPool() {
       <div style="display:flex;gap:10px;align-items:flex-start;">
         <div class="tri-emoji">${emoji}</div>
         <div class="tri-main"><div class="tri-title">${esc(t.title || t.raw)}</div></div>
+        <button class="del-btn" title="删除这条探索" onclick="deleteThread('${t.id}')">🗑️</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button class="next-btn" style="margin:0;" onclick="triage('${t.id}','push')">推进 ➡️</button>
@@ -296,6 +298,18 @@ function renderPool() {
       </div>
     </div>`;
   }).join('');
+}
+/* 彻底删除一条探索（不可逆，需二次确认）。状态类的“放弃/归档”仍走 triage。 */
+function deleteThread(id) {
+  const t = DB.threads.find(x => x.id === id); if (!t) return;
+  if (!confirm(`删除这条探索？\n\n「${(t.title || t.raw || '').slice(0, 30)}」\n\n删除后无法恢复。`)) return;
+  DB.threads = DB.threads.filter(x => x.id !== id);
+  if (curThreadId === id) { curThreadId = null; curStage = null; }
+  save();
+  renderHomeThreads();
+  if (el('s-pool').classList.contains('active')) renderPool();
+  if (el('s-mine').classList.contains('active')) renderMine();
+  toast('已删除 🗑️');
 }
 function triage(id, act) {
   const t = DB.threads.find(x => x.id === id); if (!t) return;

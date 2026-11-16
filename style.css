@@ -91,6 +91,9 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .st-drop{background:#eef1f0;color:#8a958f;}
 .st-archive{background:#eef1f0;color:#8a958f;}
 .st-done{background:#E6F2EC;color:var(--green);}
+/* 删除按钮（低调但可点，避免误触） */
+.del-btn{flex:0 0 auto;border:none;background:transparent;font-size:15px;padding:4px 2px;opacity:.45;line-height:1;}
+.del-btn:active{opacity:1;transform:scale(.9);}
 
 /* ===== 页面通用头部（整理 / 我的） ===== */
 .page-head{height:52px;display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--bg);z-index:5;}
