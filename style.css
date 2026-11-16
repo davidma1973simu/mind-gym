@@ -21,7 +21,7 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .btn:active{transform:scale(.98);}
 
 /* ===== 首页 Google 式极简 ===== */
-.home{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:58px;}
+.home{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:88px;}
 .wordmark{font-size:30px;font-weight:800;letter-spacing:2px;color:var(--green);margin-bottom:4px;}
 .wordmark small{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.5px;margin-left:6px;}
 /* ===== 首页 About 轮播卡 ===== */
