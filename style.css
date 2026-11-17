@@ -194,13 +194,14 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .turn textarea:focus{outline:none;border-color:var(--green);}
 .ex-regen{display:inline-block;border:none;background:none;color:var(--green);font-size:12px;font-weight:700;padding:4px 0;margin-top:2px;cursor:pointer;}
 .ex-regen:disabled{opacity:.55;cursor:default;}
+.problem-edit-tip{font-size:12px;color:#5b6f66;line-height:1.5;margin:2px 0 8px;}
 
 /* 问题定义凸显卡：严格格式，逐行彩色放大 */
 .problem-hero{background:linear-gradient(135deg,#fff 0%,#f7fbf8 100%);border:2px solid var(--green);border-radius:14px;padding:16px 15px;margin:2px 0 12px;box-shadow:0 4px 16px rgba(14,107,80,.1);}
 .problem-hero .ph-label{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:1px;margin-bottom:12px;}
-.problem-hero .ph-line{font-size:18px;font-weight:700;line-height:1.5;margin-bottom:9px;display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;}
-.problem-hero .ph-k{flex:0 0 auto;font-weight:800;}
-.problem-hero .ph-v{flex:1;min-width:0;word-break:break-word;padding-left:4px;}
+.problem-hero .ph-line{font-size:18px;font-weight:700;line-height:1.5;margin-bottom:11px;}
+.problem-hero .ph-k{display:block;font-weight:800;margin-bottom:1px;}
+.problem-hero .ph-v{display:block;word-break:break-word;text-wrap:pretty;}
 /* 五项标签各用一种强调色 */
 .k-now{color:#1f7a5c;}      /* 现状 · 绿 */
 .k-std{color:#2e6fb0;}      /* 标准 · 蓝 */
@@ -225,6 +226,9 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .ai-choices{display:flex;flex-direction:column;gap:8px;}
 .ai-choice{border:1.5px solid var(--green);background:#fff;color:var(--green);border-radius:12px;padding:12px;font-size:14px;font-weight:700;text-align:left;}
 .ai-choice:active{background:var(--green-soft);}
+.ai-phase{margin-bottom:14px;}
+.ai-phase-h{font-size:13px;font-weight:800;color:var(--green);margin-bottom:6px;}
+.ai-merge-hint{font-size:13px;color:#5b6f66;line-height:1.55;background:var(--green-soft);border-radius:9px;padding:9px 11px;margin:4px 0 10px;}
 .ai-loading{font-size:13px;color:var(--muted);padding:12px 0;text-align:center;}
 .ai-result-card{background:var(--green-soft);border-radius:12px;padding:12px;margin-top:10px;}
 .ai-src{font-size:11px;color:var(--green);font-weight:700;margin-bottom:6px;}

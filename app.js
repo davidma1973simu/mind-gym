@@ -378,7 +378,7 @@ const FLOWS = {
     { id:'solution', label:'最终方案', q:'把你的判断和 AI 的反馈，合成一个方案。', hint:'这是你认可的方案，下一步就去验证它。', ph:'例：下周挑 3 天，课间主动跟旁边的人说一句话' }
   ]},
   verify: { intro:'先给你一份验证建议。照着做一次最小测试，记下真实发生的事，再回头修订。', steps:[
-    { id:'advice', label:'验证建议', q:'这样验证你的方案', hint:'照这个做一次最小测试。建议来自本地模板；填了 Key 可让 AI 定制。', type:'advice' },
+    { id:'advice', label:'验证建议', q:'这样验证你的方案', hint:'这是针对"你定义的问题"和"你构建的方案"生成的具体测试：去做什么、看什么信号、怎么判断对错。照着做一次即可。', type:'advice' },
     { id:'test', label:'原型测试', q:'在这个建议下，你具体做了什么？', hint:'一个最小动作 / 一个粗糙原型，写具体做了啥。', ph:'例：周二课间主动跟同桌说了“昨天那题你会吗”' },
     { id:'result', label:'实际结果', q:'真实发生了什么？', hint:'写观察到的事实，不写“感觉还行”。', ph:'例：他愣了一下，跟我聊了两分钟' },
     { id:'verdict', label:'判断', q:'你的判断：有效，还是错了？', hint:'对照你要解决的问题——它被解决了吗？', type:'verdict' },
@@ -458,6 +458,34 @@ async function regenExamples() {
   if (btn) { btn.disabled = false; btn.textContent = '↻ 换个贴合我的例子'; }
 }
 
+/* 问题定义的 AI 归纳：把四步真实答案浓缩成一句"能被行动验证"的问题，替代机械套模板 */
+async function ensureProblemAI(t, force) {
+  if (!t) return;
+  const d = ensureFlow(t, 'define');
+  if (!force && d.problemAi) return;
+  const s = DB.settings || {};
+  if (!s.aiKey) return;                       /* 无 Key：保持本地归纳 */
+  const a = d.answers;
+  const ctx = `现状：${a.now || ''}\n标准：${a.std || ''}\n差距：${a.gap || ''}\n后果：${a.cost || ''}`;
+  const sys = '你是问题定义教练。把学生填的现状/标准/差距/后果，浓缩成一句"能被一个小行动验证"的问题。硬要求：①是一句问句或可验证的陈述，不是口号、不是"如何消除X让Y成为现实"这种套话；②聚焦差距背后的真实原因或可检验的关系，具体、能动手查；③30字以内；④中文，只输出这一句，不要引号、不要解释。';
+  const res = await callAI(sys, ctx, 300);
+  if (!res.ok) return;
+  let q = res.text.replace(/[「」"'\s]/g, '').split(/\n/)[0].trim().slice(0, 40);
+  if (!q || isBlankConclusion(q)) return;
+  d.problemAi = q; t.updatedAt = Date.now(); save();
+  const ta = el('step-input');
+  if (ta && !d.answers.problemAsk) ta.value = q;  /* 用户已改写就不覆盖 */
+  updateProblemHero();                            /* 就地刷新凸显卡的结论 */
+}
+async function regenProblemAI() {
+  const t = getCur(); if (!t) return;
+  const s = DB.settings || {};
+  if (!s.aiKey) { toast('在右上角 ⚙️ AI 设置里填 Key，才能让 AI 归纳问题'); return; }
+  const btn = el('problem-ai-btn'); if (btn) { btn.disabled = true; btn.textContent = 'AI 归纳中…'; }
+  await ensureProblemAI(t, true);
+  if (btn) { btn.disabled = false; btn.textContent = '✨ 让 AI 归纳得更准'; }
+}
+
 /* 初始化/补全某环节的对话状态 */
 function ensureFlow(t, key) {
   t.stageData = t.stageData || {};
@@ -469,14 +497,21 @@ function ensureFlow(t, key) {
 }
 /* ---------- 问题定义：严格按“现状/标准/差距/导致/所以”格式，逐项重建，绝不留空 ---------- */
 function shortPhrase(s, n) { s = (s || '').trim(); return s.length > n ? s.slice(0, n) + '…' : s; }
-/* 自动归纳“我需要解决的问题”：基于差距与标准，生成一句可验证的问句 */
+/* 本地归纳兜底（无 Key 时）：聚焦具体差距、写成能用行动验证的问句，不再套"让X成为现实" */
 function problemInduction(a) {
   const gap = (a.gap || '').trim(), std = (a.std || '').trim(), now = (a.now || '').trim();
   const core = gap || now;
   if (!core && !std) return '（先完成前面四步，这里会自动归纳）';
-  if (core && std) return `如何消除「${shortPhrase(core, 26)}」，让「${shortPhrase(std, 26)}」成为现实`;
-  if (core) return `如何消除「${shortPhrase(core, 30)}」`;
-  return `如何让「${shortPhrase(std, 30)}」成为现实`;
+  if (core) return `为什么「${shortPhrase(core, 26)}」？我能不能用一个小动作验证真正的原因`;
+  return `怎么才能做到「${shortPhrase(std, 28)}」？我能不能验证它真的可行`;
+}
+/* 从一段文字里提取"需要解决的问题"：兼容完整模板、用户直接写的问题句 */
+function extractAsk(s) {
+  s = (s || '').trim();
+  const m = s.match(/所以我需要解决的问题是[：:]?\s*(.*)$/);
+  if (m) return m[1].trim();
+  if (!isBlankConclusion(s) && !/^(现状|标准是|差距在|导致)/.test(s)) return s;
+  return '';
 }
 /* 判断结论是不是“空 / 下划线 / 旧模板残留”——这类必须重新归纳 */
 function isBlankConclusion(x) {
@@ -491,11 +526,15 @@ function problemBuild(t) {
   const std = (a.std || '').trim() || '（未填标准）';
   const gap = (a.gap || '').trim() || '（未填差距）';
   const cost = (a.cost || '').trim() || '（未填后果）';
-  /* 用户在结论里手写的有效内容优先；否则自动归纳 */
+  /* 优先级：用户修订(problemAsk) > AI 归纳(problemAi) > 用户原始输入(extractAsk) > 本地归纳 */
   let ask = '';
-  const stored = (a.problem || '').trim();
-  const m = stored.match(/所以我需要解决的问题是[：:]?\s*(.*)$/);
-  if (m) ask = m[1].trim();
+  const edited = (a.problemAsk || '').trim();
+  if (!isBlankConclusion(edited)) ask = extractAsk(edited) || edited;
+  if (isBlankConclusion(ask)) {
+    const ai = (a.problemAi || '').trim();
+    if (!isBlankConclusion(ai)) ask = extractAsk(ai) || ai;
+  }
+  if (isBlankConclusion(ask)) ask = extractAsk((a.problem || '').trim());
   if (isBlankConclusion(ask)) ask = problemInduction(a);
   ask = ask.replace(/[。．]+$/, '');
   return { now, std, gap, cost, ask,
@@ -561,7 +600,7 @@ function localReview(r) {
 }
 /* 字段内的每个逗号后断行（仅用于现状/标准/差距/后果四步） */
 function phValue(v) {
-  return String(v).split(/[，,]/).map(s => s.trim()).filter(Boolean).join('<br>');
+  return String(v).split(/[，,]/).map(s => s.trim()).filter(Boolean).map(s => phText(s)).join('<br>');
 }
 /* 结论整句连续显示：把收尾标点与前字绑在一起，杜绝「」被甩到下一行 */
 function phText(v) {
@@ -569,8 +608,9 @@ function phText(v) {
     .replace(/([\u4e00-\u9fa5a-zA-Z0-9])([」』”"）)\]】])/g, '$1\u2060$2')
     .replace(/([「『“"（\[【])([\u4e00-\u9fa5a-zA-Z0-9])/g, '$1\u2060$2');
 }
-function problemHeroHTML(t) {
+function problemHeroHTML(t, askOverride) {
   const p = problemBuild(t);
+  const ask = (askOverride && askOverride.trim()) ? askOverride.trim() : p.ask;
   /* 前四步按逗号断行；结论是一句完整的话，自然换行不拆段 */
   return `<div class="problem-hero">
     <div class="ph-label">你的问题定义</div>
@@ -580,13 +620,15 @@ function problemHeroHTML(t) {
     <div class="ph-line"><span class="ph-k k-cost">导致</span><span class="ph-v">${phValue(p.cost)}</span></div>
     <div class="ph-conclusion">
       <div class="ph-conclusion-k">所以我需要解决的问题是</div>
-      <div class="ph-conclusion-v">${phText(p.ask)}</div>
+      <div class="ph-conclusion-v">${phText(ask)}</div>
     </div>
   </div>`;
 }
 function updateProblemHero() {
   const box = el('problem-hero');
-  if (box) box.innerHTML = problemHeroHTML(getCur());
+  const ta = el('step-input');
+  const typed = ta ? ta.value : '';
+  if (box) box.innerHTML = problemHeroHTML(getCur(), typed);
 }
 /* 渲染对话流：已答的回合可点开修改；当前回合高亮输入 */
 function renderStage() {
@@ -644,6 +686,10 @@ function renderStage() {
   el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
   bindFlow(key, t, d);
   updateGate(done, key);
+  /* 走到"问题定义"这一步时，有 Key 就 Async 归纳一句更准的问题（幂等，已有则不重复） */
+  if (key === 'define' && (flow.steps[d.progress] || {}).type === 'template') ensureProblemAI(t);
+  /* 进入验证阶段即按"你定义的问题+你构建的方案"生成可执行的测试建议 */
+  if (key === 'verify' && (flow.steps[d.progress] || {}).type === 'advice') ensureAdvice();
 }
 /* 已回答的回合（可点“改”回到该步） */
 function answeredTurn(i, s, ans, key) {
@@ -663,16 +709,20 @@ function answeredTurn(i, s, ans, key) {
 function currentTurn(i, s, d, t, key) {
   let input = '';
   if (s.type === 'ai') {
-    input = `<div class="ai-choices">
-      <button class="ai-choice" onclick="runAI('plan')">🛠️ 让 AI 给出完整方案</button>
-      <button class="ai-choice" onclick="runAI('challenge')">⚔️ 让 AI 挑战 / 反驳我的判断</button>
-    </div>
-    ${aiStatusLine()}
-    <div id="ai-result"></div>`;
+    const draft = d.aiDraft || {};
+    if (!draft.challenge && !draft.plan) {
+      input = `<div class="ai-choices">
+        <button class="ai-choice" onclick="runAICollab()">⚔️ 开始协作：先挑战我的判断，再给方案 →</button>
+      </div>
+      ${aiStatusLine()}
+      <div id="ai-result"></div>`;
+    } else {
+      input = `<div id="ai-result">${aiCollabResultHTML(draft)}</div>`;
+    }
   } else if (s.type === 'advice') {
     input = `<div id="advice-box">${adviceHTML(d)}</div>
       <div class="advice-actions">
-        <button class="btn-mini" onclick="regenAdvice()">🔄 重新生成建议</button>
+        <button class="btn-mini" onclick="regenAdvice(true)">🔄 重新生成建议</button>
         <button class="btn-mini primary" onclick="answerAdvice()">照这个去做 →</button>
       </div>`;
   } else if (s.type === 'verdict') {
@@ -682,13 +732,16 @@ function currentTurn(i, s, d, t, key) {
     </div>`;
   } else {
     let pre = d.answers[s.id] || '';
-    if (s.type === 'template') pre = problemTemplate(t); // 始终用重建后的完整句，修复旧下划线
+    if (s.type === 'template') pre = problemBuild(t).ask; // 输入框只放"那句问题"，可直接改写
     const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(t)}</div>` : '';
     const onIn = s.type === 'template' ? ' oninput="updateProblemHero()"' : '';
-    const regenLink = (t.examples && t.examples[s.id])
+    const isProblem = s.type === 'template';
+    const aiBtn = isProblem ? `<button class="ex-regen" id="problem-ai-btn" onclick="regenProblemAI()">✨ 让 AI 归纳得更准</button>` : '';
+    const regenLink = (t.examples && t.examples[s.id] && !isProblem)
       ? `<button class="ex-regen" id="ex-regen-btn" onclick="regenExamples()">↻ 换个贴合我的例子</button>` : '';
-    input = `${hero}<textarea id="step-input"${onIn} placeholder="${esc(exampleFor(t, s))}">${esc(pre)}</textarea>
-      ${regenLink}
+    const editHint = isProblem ? `<div class="problem-edit-tip">上面是完整定义。这里只改最后那句"需要解决的问题"，也可以直接让 AI 重新归纳。</div>` : '';
+    input = `${hero}${editHint}<textarea id="step-input"${onIn} placeholder="${esc(exampleFor(t, s))}">${esc(pre)}</textarea>
+      ${aiBtn}${regenLink}
       <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
   }
   return `<div class="turn current">
@@ -701,14 +754,10 @@ function currentTurn(i, s, d, t, key) {
 /* 验证建议 HTML：用真实生成的，没有就本地模板 */
 function adviceHTML(d) {
   if (d.advice) {
-    const src = d.adviceSource === 'ai' ? 'AI 定制建议' : '本地模板建议';
+    const src = d.adviceSource === 'ai' ? 'AI 针对你的问题和方案定制' : '本地模板（已填入你的问题和方案 · 填 Key 可让 AI 定制）';
     return `<div class="advice-list"><div class="advice-src">${src}</div>${d.advice.map(x => `<div class="advice-row">${esc(x)}</div>`).join('')}</div>`;
   }
-  return `<div class="advice-list"><div class="advice-src">本地模板建议（填 Key 可让 AI 定制）</div>
-    <div class="advice-row">① 最小动作：只做 1 次，5 分钟内能完成。</div>
-    <div class="advice-row">② 提前写下你预期看到什么，避免事后找理由。</div>
-    <div class="advice-row">③ 只观察一个信号：你定义的问题有没有被解决。</div>
-    <div class="advice-row">④ 涉钱/安全/健康/法律：先查来源再下判断。</div></div>`;
+  return `<div class="advice-list"><div class="advice-src">正在生成…</div></div>`;
 }
 function stepperHTML(cur) {
   const STEPS = ['捕捉', '定义', '协作', '验证', '进阶'];
@@ -767,9 +816,10 @@ function answerStep() {
   if (s.type === 'ai' || s.type === 'advice' || s.type === 'verdict') return; // 这些由专用函数推进
   const val = (el('step-input') && el('step-input').value || '').trim();
   if (val.length < 2) { toast('多写一点，至少几个字'); return; }
-  /* 问题定义：用户若保留/改动后仍留下划线空结论，自动补齐，绝不存坏数据 */
+  /* 问题定义：保存用户改写的问题句(problemAsk)，不再用模板覆盖掉用户的修订 */
   if (key === 'define' && s.id === 'problem') {
-    d.answers.problem = problemTemplate(t);
+    d.answers.problemAsk = val;
+    d.answers.problem = problemTemplate(t);   /* 兼容旧字段 */
   } else {
     d.answers[s.id] = val;
   }
@@ -795,63 +845,103 @@ function setVerdict(v) {
   const key = STAGES[curStage].key, d = ensureFlow(t, key);
   d.answers.verdict = v; d.progress++; t.updatedAt = Date.now(); save(); renderStage();
 }
-/* AI 协作：有 Key 走真实 API，失败/无 Key 走本地模板；结果明确标注来源，不假装智能 */
-async function runAI(mode) {
+/* AI 协作（串行三段）：①先挑战反驳我的判断 → ②再基于质疑给方案 → ③我合成自己的方案
+   有 Key 走真实 API，失败/无 Key 走本地模板；每段明确标注来源，不假装智能。 */
+function aiCollabResultHTML(draft) {
+  const ch = draft.challenge || {}, pl = draft.plan || {};
+  let h = `<div class="ai-phase">
+    <div class="ai-phase-h">① AI 先挑战 / 反驳你的判断</div>
+    <div class="ai-result-card"><div class="ai-src">${esc(ch.source || '')}</div><div class="ai-text">${esc(ch.text || '')}</div></div>
+  </div>`;
+  if (pl.text) {
+    h += `<div class="ai-phase">
+      <div class="ai-phase-h">② AI 基于上面的质疑，给出方案</div>
+      <div class="ai-result-card"><div class="ai-src">${esc(pl.source || '')}</div><div class="ai-text">${esc(pl.text)}</div></div>
+    </div>
+    <div class="ai-merge-hint">AI 的反驳和方案都在这了。下一步由你决定：把它和你的判断合成一个你认可的方案。</div>
+    <button class="btn step-confirm" onclick="answerAI()">看完了，去合成我的方案 →</button>`;
+  } else {
+    h += `<div class="ai-loading">AI 正在基于质疑给方案…</div>`;
+  }
+  return h;
+}
+async function runAICollab() {
   const t = getCur(); if (!t) return;
   const d = ensureFlow(t, 'collab');
   const box = el('ai-result');
-  if (box) box.innerHTML = `<div class="ai-loading">AI 正在${mode === 'challenge' ? '挑战你的判断' : '生成方案'}…</div>`;
+  if (box) box.innerHTML = `<div class="ai-loading">第一步：AI 正在挑战你的判断…</div>`;
   const a = d.answers || {};
-  const problem = ((t.stageData.define || {}).answers || {}).problem || t.title || '';
-  const ctx = `问题：${problem}\n我的方向：${a.direction || ''}\n我的理由：${a.reason || ''}`;
-  const sys = mode === 'challenge'
-    ? '你是思考教练。针对用户的方向和理由，给出2-3条尖锐但友善的反驳/质疑，逼他检视盲点。不要替他下结论。简洁，中文，每条不超过60字。'
-    : '你是思考教练。基于用户的问题、方向和理由，给出一个具体可执行的完整方案，分3步，每步一句话。不要空话。中文，总共不超过150字。';
-  const res = await callAI(sys, ctx);
-  const text = res.ok ? res.text : localAI(mode, a, problem);
-  const source = res.ok ? 'AI 实时生成' : (res.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 不可用，已降级）');
-  d.aiDraft = { mode: mode === 'challenge' ? 'AI 挑战' : 'AI 方案', text, source };
+  const problem = problemBuild(t).ask || t.title || '';
+  const base = `问题：${problem}\n我的方向：${a.direction || ''}\n我的理由：${a.reason || ''}`;
+  const challengeSys = '你是思考教练。针对用户的方向和理由，给出2-3条尖锐但友善的反驳/质疑，逼他检视盲点。不要替他下结论。简洁，中文，每条不超过60字。';
+  const chRes = await callAI(challengeSys, base);
+  const chText = chRes.ok ? chRes.text : localAI('challenge', a, problem);
+  const chSrc = chRes.ok ? 'AI 实时生成' : (chRes.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 已降级）');
+  d.aiDraft = { challenge: { text: chText, source: chSrc }, plan: {} };
   t.updatedAt = Date.now(); save();
-  if (box) box.innerHTML = `<div class="ai-result-card">
-    <div class="ai-src">${source}</div>
-    <div class="ai-text">${esc(text)}</div>
-    <button class="btn step-confirm" onclick="answerAI()">采纳，继续 →</button>
-  </div>`;
+  if (box) box.innerHTML = aiCollabResultHTML(d.aiDraft);
+  /* 第二步：把"我的判断 + AI 的质疑"一起交给 AI，让它出方案，而不是凭空给 */
+  const planSys = '你是思考教练。先看过你对用户判断的反驳，再给出一个具体可执行的方案，分3步、每步一句。方案必须正面回应你刚才提出的质疑，不要空话。中文，总共不超过150字。';
+  const planCtx = base + `\n\n你刚才的反驳：\n${chText}`;
+  const plRes = await callAI(planSys, planCtx);
+  const plText = plRes.ok ? plRes.text : localAI('plan', a, problem, chText);
+  const plSrc = plRes.ok ? 'AI 实时生成' : (plRes.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 已降级）');
+  d.aiDraft.plan = { text: plText, source: plSrc };
+  save();
+  if (box) box.innerHTML = aiCollabResultHTML(d.aiDraft);
 }
 function answerAI() {
   const t = getCur(); if (!t) return;
   const d = ensureFlow(t, 'collab'); const draft = d.aiDraft || {};
-  d.answers.ai = { mode: draft.mode || 'AI 协作', text: draft.text || '', source: draft.source || '' };
+  const ch = (draft.challenge || {}).text || '', pl = (draft.plan || {}).text || '';
+  const src = (draft.plan || {}).source || (draft.challenge || {}).source || '';
+  d.answers.ai = {
+    mode: '先反驳后方案',
+    challenge: ch, plan: pl,
+    text: `【AI 的反驳】${ch}\n【AI 的方案】${pl}`,
+    source: src
+  };
   d.progress++; save(); renderStage();
 }
-/* 生成验证建议（AI 或本地），写入 verify.answers.advice */
-async function regenAdvice() {
+/* 生成验证建议（AI 或本地），写入 verify.advice。始终带上"你定义的问题 + 你构建的方案"。 */
+async function regenAdvice(force) {
   const t = getCur(); if (!t) return;
   const d = ensureFlow(t, 'verify');
-  const problem = ((t.stageData.define || {}).answers || {}).problem || t.title || '';
+  if (!force && d.advice) return;              /* 已有就不重复生成 */
+  const problem = problemBuild(t).ask || t.title || '';
   const solution = ((t.stageData.collab || {}).answers || {}).solution || '';
+  const challenge = (((t.stageData.collab || {}).answers || {}).ai || {}).challenge || '';
   const box = el('advice-box');
-  if (box) box.innerHTML = `<div class="ai-loading">正在生成验证建议…</div>`;
-  const res = await callAI('你是验证教练。针对用户的方案，给出3条具体的验证建议：最小动作、观察信号、判断标准。中文，每条不超过40字。', `问题：${problem}\n方案：${solution}`);
+  if (box) box.innerHTML = `<div class="ai-loading">正在针对你的问题和方案生成验证建议…</div>`;
+  const ctx = `你要验证的问题：${problem}\n你构建的方案：${solution}\nAI 对方案的质疑（要在测试里一并检验）：${challenge || '无'}`;
+  const sys = '你是验证教练。针对用户"要验证的问题"和"构建的方案"，给出3条能直接照做的验证建议：①一个具体的测试动作（写清去哪、做什么、拿谁试）；②一个要观察的关键信号（能证明或推翻方案的具体现象）；③一个判断标准（看到什么算有效、看到什么算错了）。必须紧扣用户的问题和方案本身，不要给"做最小测试"这类空话。中文，每条不超过45字，分三行。';
+  const res = await callAI(sys, ctx, 400);
   if (res.ok) { d.advice = splitAdvice(res.text); d.adviceSource = 'ai'; }
-  else { d.advice = localAdvice(problem, solution); d.adviceSource = 'local'; }
+  else { d.advice = localAdvice(problem, solution, challenge); d.adviceSource = 'local'; }
   save();
   if (box) box.innerHTML = adviceHTML(d);
 }
+/* 进入验证阶段即自动生成一次 */
+function ensureAdvice() { const t = getCur(); if (t) regenAdvice(false); }
 /* 本地降级：明确是模板，不冒充 AI */
-function localAI(mode, a, problem) {
+function localAI(mode, a, problem, challenge) {
   if (mode === 'challenge') {
     return `① 你的方向是「${(a.direction || '这个办法').slice(0, 20)}」——如果不做它，最坏会怎样？\n② 这个判断基于「${(a.reason || '你的理由').slice(0, 20)}」，依据可靠吗，还是只是猜测？\n③ 有没有一个人，和你情况相反却做成了？他怎么做？`;
   }
-  return `① 针对「${problem.slice(0, 24)}」，先做一个 5 分钟内能完成的最小动作。\n② 动手前写下你预期看到什么。\n③ 做完只对照一个问题：它被解决了吗？`;
+  const reply = challenge ? `先回应上面的质疑：挑一条你能查证的，动手去查。` : '';
+  return `${reply}① 针对「${String(problem).slice(0, 24)}」，做一个 5 分钟内能完成的最小动作。\n② 动手前写下你预期看到什么。\n③ 做完只对照一个问题：它被解决了吗？`;
 }
-function localAdvice(problem, solution) {
-  return [
-    `① 最小动作：针对「${(solution || problem).slice(0, 22)}」，只做 1 次，5 分钟完成。`,
-    '② 观察信号：动手前写下你预期看到什么，别事后找理由。',
-    '③ 判断标准：只问一件事——你定义的问题有没有被解决。',
-    '④ 涉钱/安全/健康/法律：先查来源再下判断。'
+function localAdvice(problem, solution, challenge) {
+  const s = String(solution || problem || '').slice(0, 26);
+  const p = String(problem || '').slice(0, 22);
+  const out = [
+    `① 测试动作：找 1 个真实场景，按你的方案「${s}」做一次（比如真的去问/去看/去试）。`,
+    `② 观察信号：动手前写下"如果我解决了「${p}」，我应该看到____"，填具体现象。`,
+    `③ 判断标准：看到那现象=有效；没看到或反着来=错了，回头改方案。`
   ];
+  if (challenge) out.push('④ 顺带检验 AI 的质疑：挑它能被观察的一条，看是不是真的发生。');
+  out.push('⑤ 涉钱/安全/健康/法律：先查来源再下判断。');
+  return out;
 }
 function splitAdvice(text) {
   return (text || '').split(/\n+/).map(x => x.trim()).filter(Boolean).slice(0, 5);
@@ -1095,6 +1185,36 @@ function exportCard(id, backToHome) {
     if (backToHome) setTimeout(() => goHome(), 700);
   } catch (e) { toast('生成失败，请重试'); console.error(e); }
 }
+/* 探索卡结语：从这条探索的真实数据里长出来，每句话都能在卡里找到出处 */
+function cardClosing(t) {
+  const d = t.stageData || {};
+  const vd = d.verify || {}, va = vd.answers || {}, da = d.define || {}, ca = d.collab || {};
+  const verdict = va.verdict;                              /* valid / wrong */
+  const test = (va.test || '').trim(), result = (va.result || '').trim();
+  const trained = threadReview(t).trained;
+  const skill = (trained[0] || '').replace(/^[^：]+：/, '').slice(0, 18);
+  let main, sub;
+  if (verdict === 'valid' && test) {
+    main = `你做的那次测试，让判断被现实确认了。`;
+    sub = skill ? `这一趟真正练到的是：${skill}` : '这就是一次完整的"想到—做到—验证"。';
+  } else if (verdict === 'wrong' && test) {
+    main = `测试没支持你的判断——你敢承认它偏了，还改了它。`;
+    sub = '愿意被现实纠偏，比判断一开始就对更值钱。';
+  } else if (result) {
+    main = `你把"我原以为"拿去做了一次真实验证。`;
+    sub = skill ? `这一趟真正练到的是：${skill}` : '看见真实发生的事，就是进步。';
+  } else if (ca.solution) {
+    main = `你把一句困惑，走成了一个自己认可的方案。`;
+    sub = '下一步，找个机会真的试一次。';
+  } else if (da.answers && da.answers.problemAsk) {
+    main = `你把说不清的纳闷，逼成了一句能验证的问题。`;
+    sub = '会问问题，本身就是一种能力。';
+  } else {
+    main = `你把"好像哪里不对"抓住并记了下来。`;
+    sub = '很多发现，都是从这一句开始的。';
+  }
+  return { main, sub };
+}
 function drawCard(t) {
   /* 重设计：文字砍半，只留 4 个核心视觉区 + 装饰，面向大中学生审美 */
   const W = 750, PAD = 48;
@@ -1177,7 +1297,16 @@ function drawCard(t) {
   /* C · AI 协作构建的方案 */
   const solRows = [];
   if (ca.ai && ca.ai.text) {
-    cap('AI ' + (ca.ai.mode ? '【' + ca.ai.mode + '】' : '') + '：' + ca.ai.text, 5, TXT_W, F(21)).forEach(x => solRows.push({ kind:'val', t:x, size:21, weight:400, color:'#3a7d68' }));
+    if (ca.ai.challenge) {
+      solRows.push({ kind:'label', t:'AI 先质疑我', color:'#C4518B', size:18 });
+      cap(ca.ai.challenge, 4, TXT_W, F(21)).forEach(x => solRows.push({ kind:'val', t:x, size:21, weight:400, color:'#3a7d68' }));
+    }
+    if (ca.ai.plan) {
+      solRows.push({ kind:'label', t:'AI 再给方案', color:GREEN, size:18 });
+      cap(ca.ai.plan, 4, TXT_W, F(21)).forEach(x => solRows.push({ kind:'val', t:x, size:21, weight:400, color:'#3a7d68' }));
+    }
+    if (!ca.ai.challenge && !ca.ai.plan)
+      cap(ca.ai.text, 5, TXT_W, F(21)).forEach(x => solRows.push({ kind:'val', t:x, size:21, weight:400, color:'#3a7d68' }));
   }
   if (ca.solution) {
     solRows.push({ kind:'label', t:'我定下的方案', color:GREEN, size:18 });
@@ -1267,14 +1396,14 @@ function drawCard(t) {
     y += card.h + 18;
   });
 
-  /* 底部鼓励 */
-  const enc = ['你不是在找答案，你是在长出找答案的能力。', '每一次“我原以为”，都让判断更准一点。', '慢一点想，比快一点答，更值钱。'];
-  const pick = enc[Math.abs(hashStr(t.id || 'x')) % enc.length];
-  ctx.fillStyle = SOFT; roundRect(ctx, PAD - 12, y, W - (PAD - 12) * 2, 88, 20); ctx.fill();
-  ctx.fillStyle = GREEN; ctx.font = F(23, 700);
-  const footLines = cap(pick, 2, W - (PAD - 12) * 2 - 56, F(23, 700));
-  footLines.forEach((ln, i) => ctx.fillText(ln, PAD + 16, y + 18 + i * 30));
-  if (footLines.length < 2) { ctx.fillStyle = MUTED; ctx.font = F(17, 400); ctx.fillText('探奇 · 不打卡，不排名，只看见自己在变强', PAD + 16, y + 62); }
+  /* 底部结语：基于这条探索的真实结果，不再用随机鸡汤 */
+  const closing = cardClosing(t);
+  ctx.fillStyle = SOFT; roundRect(ctx, PAD - 12, y, W - (PAD - 12) * 2, 96, 20); ctx.fill();
+  ctx.fillStyle = GREEN; ctx.font = F(22, 700);
+  cap(closing.main, 2, W - (PAD - 12) * 2 - 56, F(22, 700))
+    .forEach((ln, i) => ctx.fillText(ln, PAD + 16, y + 16 + i * 30));
+  ctx.fillStyle = MUTED; ctx.font = F(16, 400);
+  ctx.fillText(closing.sub, PAD + 16, y + 74);
   return c.toDataURL('image/png');
 }
 function roundRect(ctx, x, y, w, h, r) {
