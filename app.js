@@ -502,7 +502,10 @@ function problemHeroHTML(t) {
     <div class="ph-line"><span class="ph-k k-std">标准是</span><span class="ph-v">${phValue(p.std)}</span></div>
     <div class="ph-line"><span class="ph-k k-gap">差距在</span><span class="ph-v">${phValue(p.gap)}</span></div>
     <div class="ph-line"><span class="ph-k k-cost">导致</span><span class="ph-v">${phValue(p.cost)}</span></div>
-    <div class="ph-line ph-conclusion"><span class="ph-k k-ask">所以我需要解决的问题是</span><span class="ph-v v-ask">${phValue(p.ask)}</span></div>
+    <div class="ph-conclusion">
+      <div class="ph-conclusion-k">所以我需要解决的问题是</div>
+      <div class="ph-conclusion-v">${phValue(p.ask)}</div>
+    </div>
   </div>`;
 }
 function updateProblemHero() {
@@ -788,7 +791,11 @@ function summaryHTML(t, key) {
     if (s.type === 'ai') v = (v.mode || '') + '：' + (v.text || '').slice(0, 80);
     if (s.type === 'verdict') v = v === 'valid' ? '✅ 有效' : '❌ 错了';
     if (s.type === 'advice') v = '已收到验证建议';
-    if (s.type === 'template') return problemHeroHTML(t);
+    /* 小结里不再放大凸显卡，问题定义在对话区已完整展示；这里只留一句话摘要 */
+    if (s.type === 'template') {
+      const p = problemBuild(t);
+      return `<div class="sc-row"><b>${s.label}：</b>${esc(shortPhrase(p.ask, 34))}</div>`;
+    }
     return `<div class="sc-row"><b>${s.label}：</b>${esc(v)}</div>`;
   });
   if (!pairs.length) return '<div class="sc-title">这一步的小结</div><div class="sc-row" style="color:var(--muted)">跟着对话回答，这里会自动汇总</div>';
@@ -961,7 +968,8 @@ function exportCard(id, backToHome) {
 }
 function drawCard(t) {
   /* 重设计：文字砍半，只留 4 个核心视觉区 + 装饰，面向大中学生审美 */
-  const W = 750, PAD = 48, TXT_W = W - PAD * 2 - 96;
+  const W = 750, PAD = 48;
+  const CARD_X = PAD - 12, CARD_W = W - CARD_X * 2, TX = CARD_X + 78, TXT_W = CARD_W - 78 - 30;
   const GREEN = '#0E6B50', CORAL = '#FF8A5B', INK = '#1c2b25', MUTED = '#7a8a83', SOFT = '#E7F3ED';
   const fam = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
   const c = document.createElement('canvas');
@@ -998,7 +1006,7 @@ function drawCard(t) {
   cards.push({ emoji: '🔍', kicker: '起点 · 我记下的', accent: GREEN,
     rows: cap(t.raw || t.title || '—', 3, TXT_W, F(26, 500)).map(x => ({ t: x, size: 26, weight: 500, color: INK })) });
 
-  /* B · 问题定义（核心，最突出） */
+  /* B · 问题定义（核心，最突出）：标签独占一行，答案另起占满宽度，杜绝溢出 */
   const probRows = [];
   const seg = [
     ['现状', p.now, '#2E9E6B'],
@@ -1009,15 +1017,28 @@ function drawCard(t) {
   ];
   seg.forEach((segItem) => {
     const label = segItem[0], val = segItem[1], col = segItem[2], isAsk = label.indexOf('解决的问题') >= 0;
+    /* 标签行 */
+    probRows.push({ kind:'label', t:label, color:col, size:isAsk ? 18 : 17 });
+    /* 答案行：占满卡内宽度换行，不再从标签后起笔 */
     const parts = String(val || '').split(/[，,]/).map(x => x.trim()).filter(Boolean);
-    (parts.length ? parts : ['—']).forEach((part, j) => {
-      cap(part, 2, TXT_W - 8, F(isAsk ? 25 : 23, isAsk ? 800 : 600)).forEach(line => {
-        probRows.push({ t: line, size: isAsk ? 25 : 23, weight: isAsk ? 800 : 600, color: isAsk ? CORAL : INK,
-          label: j === 0 ? label : '', labelColor: col });
+    (parts.length ? parts : ['—']).forEach((part) => {
+      cap(part, 4, TXT_W, F(isAsk ? 24 : 23, isAsk ? 800 : 600)).forEach(line => {
+        probRows.push({ kind:'val', t:line, size:isAsk ? 24 : 23, weight:isAsk ? 800 : 600, color:isAsk ? CORAL : INK });
       });
     });
   });
   cards.push({ emoji: '🎯', kicker: '我把问题说清楚了', accent: CORAL, hero: true, rows: probRows });
+
+  /* C · AI 协作构建的方案 */
+  const solRows = [];
+  if (ca.ai && ca.ai.text) {
+    cap('AI ' + (ca.ai.mode ? '【' + ca.ai.mode + '】' : '') + '：' + ca.ai.text, 5, TXT_W, F(21)).forEach(x => solRows.push({ kind:'val', t:x, size:21, weight:400, color:'#3a7d68' }));
+  }
+  if (ca.solution) {
+    solRows.push({ kind:'label', t:'我定下的方案', color:GREEN, size:18 });
+    cap(ca.solution, 5, TXT_W, F(23, 700)).forEach(x => solRows.push({ kind:'val', t:x, size:23, weight:700, color:INK }));
+  }
+  if (solRows.length) cards.push({ emoji: '🤝', kicker: 'AI 协作下，我定下了方案', accent: GREEN, rows: solRows });
 
   /* C · 验证 */
   const vRows = [];
@@ -1035,7 +1056,11 @@ function drawCard(t) {
 
   /* 测量高度 */
   let y = 250 + 30;
-  cards.forEach(card => { card.h = 66 + card.rows.length * 38; y += card.h + 18; });
+  cards.forEach(card => {
+    const lineH = card.rows.reduce((h, r) => h + (r.kind === 'label' ? 32 : 36), 0);
+    card.h = 66 + lineH + 14;
+    y += card.h + 18;
+  });
   const totalH = y + 112;
   const dpr = 2;
   c.width = W * dpr; c.height = totalH * dpr;
@@ -1079,20 +1104,18 @@ function drawCard(t) {
     ctx.beginPath(); ctx.arc(bx + 42, y + 42, 24, 0, Math.PI * 2); ctx.fill();
     ctx.font = '26px sans-serif'; ctx.textBaseline = 'middle'; ctx.fillText(card.emoji, bx + 42, y + 44);
     ctx.textBaseline = 'top';
-    ctx.font = F(19, 800); ctx.fillStyle = card.accent; ctx.fillText(card.kicker, bx + 78, y + 28);
+    ctx.font = F(19, 800); ctx.fillStyle = card.accent; ctx.fillText(card.kicker, TX, y + 28);
     let ry = y + 66;
     card.rows.forEach(row => {
-      if (row.label) {
-        ctx.font = F(row.size, 800);
-        const lw = ctx.measureText(row.label).width;
-        ctx.fillStyle = row.labelColor; ctx.fillText(row.label, bx + 78, ry);
-        ctx.font = F(row.size, row.weight); ctx.fillStyle = row.color;
-        ctx.fillText(row.t, bx + 86 + lw, ry);
+      if (row.kind === 'label') {
+        ctx.font = F(row.size || 18, 800); ctx.fillStyle = row.color;
+        ctx.fillText(row.t, TX, ry);
+        ry += 32;
       } else {
-        ctx.font = F(row.size, row.weight); ctx.fillStyle = row.color;
-        ctx.fillText(row.t, bx + 78, ry);
+        ctx.font = F(row.size, row.weight || 400); ctx.fillStyle = row.color;
+        ctx.fillText(row.t, TX, ry);
+        ry += 36;
       }
-      ry += 38;
     });
     y += card.h + 18;
   });
