@@ -332,3 +332,8 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .finish-btn{position:relative;z-index:1;background:#fff;color:var(--green);font-size:16px;font-weight:800;border-radius:14px;padding:14px;margin-top:0;box-shadow:0 4px 14px rgba(0,0,0,.12);}
 .finish-btn:active{transform:scale(.98);}
 .finish-foot{position:relative;z-index:1;font-size:11px;color:rgba(255,255,255,.62);margin-top:13px;letter-spacing:.3px;}
+
+/* 完成卡：回去修订（低调文字按钮） */
+.finish-revisit{display:block;margin:12px auto 0;border:none;background:transparent;color:rgba(255,255,255,.9);font-size:13px;font-weight:700;padding:6px 12px;position:relative;z-index:1;text-decoration:underline;text-underline-offset:3px;}
+.finish-revisit:active{color:#fff;}
+#card-topic{color:#fff;font-weight:800;}

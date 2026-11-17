@@ -556,11 +556,12 @@ function renderStage() {
     </div>
   </div>`;
   if (t.status === 'done') {
-    /* 已完成：底部收口，避免与完成卡重复触发 nextStage */
+    /* 已完成：保留回退修订入口，避免走完就被锁死 */
     el('stage-footer').innerHTML = `<div class="foot-row">
-      <button class="next-btn ghost" onclick="goHome()">← 回到首页</button>
+      <button class="next-btn ghost" onclick="reopenForEdit()">‹ 回去修订</button>
       <button class="next-btn coral" onclick="exportCard('${t.id}',true)">📥 再存一张卡</button>
-    </div>`;
+    </div>
+    <div class="foot-row" style="margin-top:8px;"><button class="next-btn ghost" onclick="goHome()">← 回到首页</button></div>`;
   } else {
     el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>${exitBar}`;
   }
@@ -654,7 +655,26 @@ function aiStatusLine() {
   return `<div class="ai-note">🔑 还没填 AI Key？在首页右上角 ⚙️ AI 设置 里填一个，M2 就能真的和你一起想了。</div>`;
 }
 function prevStage() {
-  if (curStage > 2) { const t = getCur(); if (t) { t.stagePointer = curStage - 1; save(); } curStage = curStage - 1; renderStage(); }
+  if (curStage > 2) {
+    const t = getCur();
+    if (t) {
+      t.stagePointer = curStage - 1;
+      /* 从完成态退回 = 重新打开修订，清掉完成标记，否则渲染仍停在完成卡 */
+      if (t.status === 'done') { t.status = 'active'; t.finishedAt = null; }
+      save();
+    }
+    curStage = curStage - 1; renderStage();
+    toast('已回到上一步，可继续修订');
+  }
+}
+/* 完成卡上的“回去修订”：从最后一跳回验证/上一阶段，重新进入可编辑状态 */
+function reopenForEdit() {
+  const t = getCur(); if (!t) return;
+  t.status = 'active'; t.finishedAt = null;
+  const target = curStage > 2 ? curStage - 1 : 2;
+  t.stagePointer = target; curStage = target; save();
+  renderStage();
+  toast('已回到前面，可继续修订 ✎');
 }
 function toggleHelp() { const h = el('help-sheet'); if (h) h.classList.toggle('show'); }
 
@@ -780,6 +800,31 @@ async function callAI(system, user) {
   } catch (e) { return { ok:false, reason:'network_or_cors' }; }
 }
 
+/* ---------- 探索卡标题：AI 把问题概括成 ≤6 字标签，失败本地提炼 ---------- */
+function localTopic(t) {
+  const p = problemBuild(t);
+  /* 优先从差距/现状里取最有信息量的一小段，去掉标点与常见修饰 */
+  let s = (p.gap || p.now || p.ask || '').trim();
+  s = s.replace(/[「」『』“”"'，,。.；;：:！!？?、\s]/g, '');
+  s = s.replace(/^(我发现|我发现|关于|就是|其实|现在|目前|问题|这个|一个|感觉|觉得)+/g, '');
+  s = s.slice(0, 6);
+  return s || '这次探索';
+}
+async function ensureTopic(t) {
+  /* 已有标签就不再生成，避免每次进入都调用 */
+  if (t.topic) return;
+  const p = problemBuild(t);
+  const res = await callAI('你是中文标题助手。把下面的问题概括成一个不超过6个字的中文短语（只要名词短语，不要标点、不要引号、不要解释）。例如："课间大家低头玩手机不愿交流"→"课间无交流"。只输出这个短语。', '问题：' + p.ask + '\n差距：' + p.gap + '\n现状：' + p.now);
+  let topic;
+  if (res.ok) {
+    topic = res.text.replace(/[「」『』“”"'，,。.；;：:！!？?、\s]/g, '').slice(0, 6);
+  }
+  if (!topic) topic = localTopic(t);
+  t.topic = topic; save();
+  /* 若完成卡/标题已在屏上，就地刷新标题，无需整屏重绘 */
+  const node = el('card-topic'); if (node) node.textContent = topic;
+}
+
 /* 小结：直接汇总对话各回合的答案，不再依赖表单字段 */
 function summaryHTML(t, key) {
   const d = (t.stageData && t.stageData[key]) || {};
@@ -846,6 +891,7 @@ function nextStage() {
     t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); save();
     renderStage();
     toast('这一趟，走完了 🎉');
+    ensureTopic(t);   /* 异步生成 ≤6 字问题标签，供探索卡标题用 */
   }
 }
 /* 完成卡：只在进阶屏内显示，由 renderStage 注入 */
@@ -853,8 +899,9 @@ function finishCardHTML(t) {
   return `<div class="finish-card">
     <div class="finish-emoji">🎉</div>
     <div class="finish-title">这一趟，走完了</div>
-    <div class="finish-text">从一句"纳闷"，到你亲手定义、验证、修订的问题。值得留一张卡。</div>
+    <div class="finish-text">我把「<span id="card-topic">${esc(t.topic || localTopic(t))}</span>」这个问题，从一句纳闷走到了亲手验证。值得留一张卡。</div>
     <button class="btn finish-btn" onclick="exportCard('${t.id}',true)">📥 生成我的探索卡</button>
+    <button class="finish-revisit" onclick="reopenForEdit()">✎ 回去再改改</button>
     <div class="finish-foot">不打卡，不排名——这张卡，只属于你自己。</div>
   </div>`;
 }
@@ -1079,8 +1126,13 @@ function drawCard(t) {
   for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(W - 72 - i * 26, 92, 4, 0, Math.PI * 2); ctx.fill(); }
   ctx.textBaseline = 'top';
   ctx.font = F(20, 700); ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.fillText('探奇 · MIND GYM', PAD, 32);
-  ctx.font = F(52, 800); ctx.fillStyle = '#fff'; ctx.fillText('这一趟，我走完了', PAD, 76);
-  ctx.font = '58px sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('✦', W - 122, 68);
+  /* 标题：我对「XX」问题的新探索，XX≤6字；动态缩字号确保一行显示完 */
+  const topic = (t.topic || localTopic(t)).slice(0, 6);
+  const title = `我对「${topic}」问题的新探索`;
+  let ts = 42;
+  ctx.font = F(ts, 800);
+  while (ctx.measureText(title).width > W - PAD * 2 && ts > 24) { ts -= 2; ctx.font = F(ts, 800); }
+  ctx.fillStyle = '#fff'; ctx.fillText(title, PAD, 76);
   const stamp = new Date(t.finishedAt || t.updatedAt || Date.now()).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   ctx.font = F(19, 400); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText('记录于 ' + stamp, PAD, 152);
   const steps = ['捕捉', '定义', '协作', '验证', '进阶'];
