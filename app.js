@@ -272,6 +272,7 @@ function renderHomeThreads() {
         ${railHTML(t)}
       </div>
       <div class="status-chip ${statusClass(t.status)}">${statusText(t.status)}</div>
+      ${t.status === 'done' ? `<button class="dl-btn" title="下载探索卡" onclick="event.stopPropagation();exportCard('${t.id}')">📥</button>` : ''}
       <button class="del-btn" title="删除这条探索" onclick="event.stopPropagation();deleteThread('${t.id}')">🗑️</button>
     </div>`;
   }).join('');
@@ -342,32 +343,32 @@ const STAGES = {
        nextLabel:'下一步：去验证这个方案 →' },
   4: { key:'verify', label:'验证 · 第4步/共5', why:'想法对不对，做了才知道。按验证建议做一次最小测试，记下真实结果，再回头修订。',
        nextLabel:'下一步：看看怎么练得更顺 →' },
-  5: { key:'improve', label:'进阶 · 第5步/共5', why:'不是打分。回头看整段对话，挑一个下次能改的点。',
-       nextLabel:'收尾啦 🎉 回到首页 →' }
+  5: { key:'improve', label:'进阶 · 第5步/共5', why:'看见自己练到了什么，再挑一个下次能改的点。',
+       nextLabel:'完成这一趟，生成我的探索卡 →' }
 };
 /* 每个环节的对话脚本。type: text 普通输入 / template 汇总填空 / ai AI 协作 / advice 验证建议 / verdict 二选一 */
 const FLOWS = {
   define: { intro:'跟着下面的问题走。只写观察到的事实，不写解释、不着急下结论。', steps:[
-    { id:'now', label:'① 现状', q:'现在实际发生的是什么？', hint:'一句话。只写你观察到的事实，不写解释。', ph:'例：课间大家都低头刷手机，几乎没人说话' },
-    { id:'std', label:'② 标准', q:'本来应该是什么样？', hint:'参照可以是自己的期望、岗位要求、常识基准，或你认可的某个做法。', ph:'例：我希望课间能有人说说话' },
-    { id:'gap', label:'③ 差距', q:'现状与标准之间，具体差在哪？', hint:'只写一个最关键的差距，不要罗列。', ph:'例：大家宁愿刷手机也不愿开口' },
-    { id:'cost', label:'④ 后果', q:'这个差距造成了什么可识别的后果？不解决会怎样？', hint:'要具体，不能是“不好”“难受”。', ph:'例：一学期下来我没交到什么新朋友' },
-    { id:'problem', label:'⑤ 问题定义', q:'把前四步压成一句话。', hint:'最后那个“问题”必须可验证——能通过行动观察它是否被解决。', ph:'', type:'template' }
+    { id:'now', label:'现状', q:'现在实际发生的是什么？', hint:'一句话。只写你观察到的事实，不写解释。', ph:'例：课间大家都低头刷手机，几乎没人说话' },
+    { id:'std', label:'标准', q:'本来应该是什么样？', hint:'参照可以是自己的期望、岗位要求、常识基准，或你认可的某个做法。', ph:'例：我希望课间能有人说说话' },
+    { id:'gap', label:'差距', q:'现状与标准之间，具体差在哪？', hint:'只写一个最关键的差距，不要罗列。', ph:'例：大家宁愿刷手机也不愿开口' },
+    { id:'cost', label:'后果', q:'这个差距造成了什么可识别的后果？不解决会怎样？', hint:'要具体，不能是“不好”“难受”。', ph:'例：一学期下来我没交到什么新朋友' },
+    { id:'problem', label:'问题定义', q:'把前四步压缩成一句可验证的问题定义。', hint:'系统已按你的前四步归纳好一句，可直接用，也可以改。最后那个问题要能通过行动验证。', ph:'', type:'template' }
   ]},
   collab: { intro:'先给方向、再说理由。然后选 AI 怎么帮你：出完整方案，或专门挑你判断的毛病。', steps:[
-    { id:'direction', label:'① 你的方向', q:'针对这个问题，你倾向怎么解决？', hint:'先给一个方向，不用完美。AI 一会儿会帮你，也可能反驳你。', ph:'例：我想在课间主动找人聊一句' },
-    { id:'reason', label:'② 你的理由', q:'为什么是这个方向？你依据什么？', hint:'依据可以是你的经验、常识，或你查过的东西。', ph:'例：因为不主动就永远没人先找我' },
-    { id:'ai', label:'③ AI 协作', q:'让 AI 帮你推进这一步', hint:'选一种协作方式——它会基于你的问题、方向和理由来回应。', type:'ai' },
-    { id:'solution', label:'④ 最终方案', q:'把你的判断和 AI 的反馈，合成一个方案。', hint:'这是你认可的方案，下一步就去验证它。', ph:'例：下周挑 3 天，课间主动跟旁边的人说一句话' }
+    { id:'direction', label:'你的方向', q:'针对这个问题，你倾向怎么解决？', hint:'先给一个方向，不用完美。AI 一会儿会帮你，也可能反驳你。', ph:'例：我想在课间主动找人聊一句' },
+    { id:'reason', label:'你的理由', q:'为什么是这个方向？你依据什么？', hint:'依据可以是你的经验、常识，或你查过的东西。', ph:'例：因为不主动就永远没人先找我' },
+    { id:'ai', label:'AI 协作', q:'让 AI 帮你推进这一步', hint:'选一种协作方式——它会基于你的问题、方向和理由来回应。', type:'ai' },
+    { id:'solution', label:'最终方案', q:'把你的判断和 AI 的反馈，合成一个方案。', hint:'这是你认可的方案，下一步就去验证它。', ph:'例：下周挑 3 天，课间主动跟旁边的人说一句话' }
   ]},
   verify: { intro:'先给你一份验证建议。照着做一次最小测试，记下真实发生的事，再回头修订。', steps:[
-    { id:'advice', label:'① 验证建议', q:'这样验证你的方案', hint:'照这个做一次最小测试。建议来自本地模板；填了 Key 可让 AI 定制。', type:'advice' },
-    { id:'test', label:'② 原型测试', q:'在这个建议下，你具体做了什么？', hint:'一个最小动作 / 一个粗糙原型，写具体做了啥。', ph:'例：周二课间主动跟同桌说了“昨天那题你会吗”' },
-    { id:'result', label:'③ 实际结果', q:'真实发生了什么？', hint:'写观察到的事实，不写“感觉还行”。', ph:'例：他愣了一下，跟我聊了两分钟' },
-    { id:'verdict', label:'④ 判断', q:'你的判断：有效，还是错了？', hint:'对照你要解决的问题——它被解决了吗？', type:'verdict' },
-    { id:'revision', label:'⑤ 修订', q:'根据结果，怎么修订你的判断或方案？', hint:'这一步会更新你前面整段对话，让它更接近真相。', ph:'例：直接问问题有用，下次可以从共同话题切入' }
+    { id:'advice', label:'验证建议', q:'这样验证你的方案', hint:'照这个做一次最小测试。建议来自本地模板；填了 Key 可让 AI 定制。', type:'advice' },
+    { id:'test', label:'原型测试', q:'在这个建议下，你具体做了什么？', hint:'一个最小动作 / 一个粗糙原型，写具体做了啥。', ph:'例：周二课间主动跟同桌说了“昨天那题你会吗”' },
+    { id:'result', label:'实际结果', q:'真实发生了什么？', hint:'写观察到的事实，不写“感觉还行”。', ph:'例：他愣了一下，跟我聊了两分钟' },
+    { id:'verdict', label:'判断', q:'你的判断：有效，还是错了？', hint:'对照你要解决的问题——它被解决了吗？', type:'verdict' },
+    { id:'revision', label:'修订', q:'根据结果，怎么修订你的判断或方案？', hint:'这一步会更新你前面整段对话，让它更接近真相。', ph:'例：直接问问题有用，下次可以从共同话题切入' }
   ]},
-  improve: { intro:'回头看整段对话，只挑一个下次能改的点。', steps:[
+  improve: { intro:'先看看这一趟你练到了什么，再挑一个下次能改的点。', steps:[
     { id:'note', label:'下次试一点', q:'下次，你最想改进这一步的哪里？', hint:'挑一个点就够。', ph:'例：定义时“后果”写得太笼统，下次要写具体数字' }
   ]}
 };
@@ -382,11 +383,89 @@ function ensureFlow(t, key) {
   t.stageData[key] = d;
   return d;
 }
-/* 预填第 5 步“问题定义”：把前四步拼成模板句 */
+/* 预填第 5 步“问题定义”：把前四步拼成模板句，并自动归纳出可验证的问题，不留空 */
+function shortPhrase(s, n) { s = (s || '').trim(); return s.length > n ? s.slice(0, n) + '…' : s; }
+function problemInduction(a) {
+  const gcore = shortPhrase(a.gap || a.now || '这个差距', 24);
+  const score = shortPhrase(a.std || '原本应有的样子', 24);
+  return `如何让「${gcore}」回到「${score}」`;
+}
 function problemTemplate(t) {
   const a = (t.stageData.define || {}).answers || {};
   if (!a.now) return '';
-  return `现状${a.now}，标准是${a.std || '___'}，差距在${a.gap || '___'}，导致${a.cost || '___'}，所以我需要解决的问题是___。`;
+  const now = shortPhrase(a.now, 40), std = shortPhrase(a.std, 40),
+        gap = shortPhrase(a.gap, 40), cost = shortPhrase(a.cost, 40);
+  return `现状${now}，标准是${std}，差距在${gap}，导致${cost}，所以我需要解决的问题是：${problemInduction(a)}？`;
+}
+/* ---------- 进阶：基于真实数据的成长反馈 ---------- */
+function threadReview(t) {
+  const d = t.stageData || {};
+  const da = (d.define || {}).answers || {};
+  const ca = (d.collab || {}).answers || {};
+  const va = (d.verify || {}).answers || {};
+  const vd = d.verify || {};
+  const trained = [], watch = [];
+  if (t.raw) trained.push('发现：把一个真实的困惑抓住并记了下来');
+  if (da.problem) trained.push('定义：用“现状—标准—差距—后果”压出一句可验证的问题');
+  if (ca.direction && ca.reason) trained.push('判断：在 AI 介入前，先说清自己的方向和理由');
+  if (ca.ai) trained.push('协作：借 AI 拿到了方案或反驳，再合成自己的决定');
+  if (va.test && va.result) trained.push('验证：用一个最小动作拿到了真实结果');
+  if (va.verdict) trained.push('校准：' + (va.verdict === 'valid' ? '判断被现实确认' : '敢承认判断错了，并据此修订'));
+  if (vd.risk && vd.source) trained.push('风险意识：涉钱/安全/健康/法律，先核对了来源');
+  if (!trained.length) trained.push('你迈出了第一步——把“不对劲”记了下来');
+  if (!da.problem) watch.push('这次没走完问题定义，下次试把它压成一句话');
+  if (/\b(不好|难受|不行|奇怪)\b/.test(da.cost || '')) watch.push('“后果”还可以更具体——具体到你看见了什么');
+  if (!ca.direction) watch.push('下次先写你自己的判断，再看 AI 怎么说');
+  if (vd.risk && !vd.source) watch.push('高风险问题，验证前记得先查一个来源');
+  if (va.verdict === 'wrong') watch.push('这次判断偏了——回头看，是哪一步的依据不够实');
+  if (!watch.length) watch.push('这次每一步都到位了，下次可以挑战一个更难的问题');
+  return { trained, watch };
+}
+function reviewHTML(t) {
+  const r = threadReview(t);
+  const im = t.stageData.improve || {};
+  const ai = im.aiReview
+    ? `<div class="rv-ai"><div class="rv-ai-src">${esc(im.aiReviewSource || 'AI 深化')}</div><div class="rv-ai-text">${esc(im.aiReview)}</div></div>`
+    : '';
+  const aiBtn = `<button class="btn-mini" id="rv-ai-btn" onclick="deepenReview()">✨ 让 AI 点评这一趟</button>`;
+  return `<div class="review-card">
+    <div class="rv-head"><span class="rv-badge">这一趟，你练到了</span>${aiBtn}</div>
+    <div class="rv-block">${r.trained.map(x => `<div class="rv-row"><b>✓</b>${esc(x)}</div>`).join('')}</div>
+    <div class="rv-watch-title">下次留意</div>
+    <div class="rv-watch">${r.watch.map(x => `<div class="rv-row"><b>→</b>${esc(x)}</div>`).join('')}</div>
+    ${ai}
+  </div>`;
+}
+async function deepenReview() {
+  const t = getCur(); if (!t) return;
+  const s = DB.settings || {};
+  if (!s.aiKey) { toast('在首页右上角 ⚙️ AI 设置里填 Key，可让 AI 点评'); return; }
+  const r = threadReview(t);
+  const btn = el('rv-ai-btn'); if (btn) { btn.disabled = true; btn.textContent = 'AI 正在点评…'; }
+  const ctx = `捕捉：${(t.raw || '').slice(0, 80)}\n练到的能力：${r.trained.join('；')}\n下次留意：${r.watch.join('；')}`;
+  const res = await callAI('你是青少年思维教练。针对学生这次“发现问题—定义—验证”的练习，写一段50-90字的点评：先肯定他真正练到的能力，再给一个具体、可操作的下次建议。温暖、像同盟者，不说教、不用口号。中文。', ctx);
+  const im = ensureFlow(t, 'improve');
+  if (res.ok) { im.aiReview = res.text; im.aiReviewSource = 'AI 点评'; }
+  else { im.aiReview = localReview(r); im.aiReviewSource = '本地模板（AI 不可用，已降级）'; }
+  save();
+  const host = el('review-slot'); if (host) host.innerHTML = reviewHTML(t);
+  else toast('点评已生成');
+}
+function localReview(r) {
+  return `你已经把「${(r.trained[0] || '发现困惑').replace(/^[^：]+：/, '')}」练成了习惯，这是最难的起点。${r.watch[0] || ''}下次就试这一件，不用多。`;
+}
+function problemHeroHTML(full) {
+  const s = (full || '').trim();
+  if (!s) return '<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-tail">还没填，先在下面写下来</div></div>';
+  const marker = '所以我需要解决的问题是';
+  const idx = s.indexOf(marker);
+  if (idx < 0) return `<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-tail">${esc(s)}</div></div>`;
+  const head = s.slice(0, idx), tail = s.slice(idx);
+  return `<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-head">${esc(head)}</div><div class="ph-tail">${esc(tail)}</div></div>`;
+}
+function updateProblemHero() {
+  const box = el('problem-hero'), inp = el('step-input');
+  if (box && inp) box.innerHTML = problemHeroHTML(inp.value);
 }
 /* 渲染对话流：已答的回合可点开修改；当前回合高亮输入 */
 function renderStage() {
@@ -399,6 +478,8 @@ function renderStage() {
     <div class="help-sheet" id="help-sheet">${esc(flow.intro)}</div>`;
   body += stepperHTML(curStage);
   body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div></div>`;
+  /* 进阶屏：先给真实成长反馈，再让用户写一个改进点 */
+  if (key === 'improve') body += `<div id="review-slot">${reviewHTML(t)}</div>`;
   body += `<div class="dlg" id="dlg">`;
   flow.steps.forEach((s, i) => {
     const ans = d.answers[s.id];
@@ -418,7 +499,15 @@ function renderStage() {
   el('stage-body').innerHTML = body;
   const prevBtn = curStage > 2 ? `<button class="next-btn ghost" id="prev-btn" onclick="prevStage()">‹ 上一步</button>` : '';
   const done = d.progress >= flow.steps.length;
-  el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>`;
+  /* 随时收尾出口：不是每条探索都要走到最后。定义清楚就可以停。 */
+  const exitBar = `<div class="exit-bar">
+    <span>想清楚了就可以停，不必每条都走完</span>
+    <div class="exit-btns">
+      <button class="exit-btn" onclick="finishThread('archived')">📦 先存着</button>
+      <button class="exit-btn" onclick="finishThread('dropped')">🚫 放下</button>
+    </div>
+  </div>`;
+  el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>${exitBar}`;
   el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
   bindFlow(key, t, d);
   updateGate(done, key);
@@ -429,9 +518,11 @@ function answeredTurn(i, s, ans, key) {
   if (s.type === 'ai') a = (ans.mode ? '【' + ans.mode + '】' : '') + (ans.text || '').slice(0, 120);
   if (s.type === 'verdict') a = ans === 'valid' ? '✅ 有效' : '❌ 错了';
   if (s.type === 'advice') a = '已收到验证建议（可重新生成）';
+  /* 问题定义：用凸显卡，不再是一段灰字 */
+  const body = s.type === 'template' ? problemHeroHTML(ans) : `<div class="turn-a">${esc(a || '')}</div>`;
   return `<div class="turn done">
     <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
-    <div class="turn-a">${esc(a || '')}</div>
+    ${body}
     <button class="turn-edit" onclick="editTurn(${i})">改 ✎</button>
   </div>`;
 }
@@ -459,10 +550,13 @@ function currentTurn(i, s, d, t, key) {
   } else {
     let pre = d.answers[s.id] || '';
     if (s.type === 'template' && !pre) pre = problemTemplate(t);
-    input = `<textarea id="step-input" placeholder="${esc(s.ph || '')}">${esc(pre)}</textarea>
+    const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(pre)}</div>` : '';
+    const onIn = s.type === 'template' ? ' oninput="updateProblemHero()"' : '';
+    input = `${hero}<textarea id="step-input"${onIn} placeholder="${esc(s.ph || '')}">${esc(pre)}</textarea>
       <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
   }
   return `<div class="turn current">
+    <span class="now-tag">现在轮到你</span>
     <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
     <div class="turn-hint">${esc(s.hint)}</div>
     ${input}
@@ -635,7 +729,8 @@ function summaryHTML(t, key) {
     if (s.type === 'ai') v = (v.mode || '') + '：' + (v.text || '').slice(0, 80);
     if (s.type === 'verdict') v = v === 'valid' ? '✅ 有效' : '❌ 错了';
     if (s.type === 'advice') v = '已收到验证建议';
-    return `<div class="sc-row"><b>${s.label.replace(/^[①②③④⑤]\s*/, '')}：</b>${esc(v)}</div>`;
+    if (s.type === 'template') return problemHeroHTML(v);
+    return `<div class="sc-row"><b>${s.label}：</b>${esc(v)}</div>`;
   });
   if (!pairs.length) return '<div class="sc-title">这一步的小结</div><div class="sc-row" style="color:var(--muted)">跟着对话回答，这里会自动汇总</div>';
   return `<div class="sc-title">这一步的小结</div>${pairs.join('')}`;
@@ -680,7 +775,34 @@ function nextStage() {
   if (d.progress < flow.steps.length) { toast('先把这段对话走完'); return; }
   if (key === 'verify' && d.risk === true && !(d.source || '').trim()) { toast('这条涉及风险，先补来源'); return; }
   if (curStage < 5) { t.stagePointer = curStage + 1; curStage = curStage + 1; save(); renderStage(); }
-  else { t.status = 'done'; t.stagePointer = 5; save(); goHome(); toast('收尾啦 🎉'); }
+  else {
+    t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); save();
+    showCardReady(t);
+  }
+}
+/* 完成一整趟后，弹“探索卡”邀请（PNG 可下载），不是直接丢回首页 */
+function showCardReady(t) {
+  const fb = el('home-feedback'); if (!fb) { goHome(); return; }
+  goHome();
+  fb.innerHTML = `<div class="fb-card card-ready">
+    <div class="fb-ok">这一趟，走完了 🎉</div>
+    <div class="fb-text">从一句“纳闷”，到你亲手定义、验证、修订的问题。值得留一张卡。</div>
+    <div class="fb-actions">
+      <button class="fb-go" onclick="exportCard('${t.id}')">📥 生成探索卡</button>
+      <button class="fb-more" onclick="closeFeedback()">先不用</button>
+    </div></div>`;
+  fb.classList.add('show');
+}
+function closeFeedback() { const fb = el('home-feedback'); if (fb) fb.classList.remove('show'); }
+/* 随时收尾：不是每条探索都要走到验证。想清楚了就能停，状态入库。 */
+function finishThread(status) {
+  const t = getCur(); if (!t) return;
+  const label = { archived: '先存着', dropped: '放下' }[status] || '收尾';
+  if (!confirm(`把这条探索「${label}」？\n\n「${(t.title || t.raw || '').slice(0, 28)}」\n\n${status === 'archived' ? '以后可以在“我的探索”里重新打开继续。' : '放下后不再出现在进行中，但仍可在“我的探索”里找到。'}`)) return;
+  t.status = status;
+  t.finishedAt = Date.now(); t.stoppedAtStage = curStage;
+  t.updatedAt = Date.now(); save();
+  goHome(); toast(status === 'archived' ? '已先存着 📦' : '已放下 🌿');
 }
 function saveDraft() {
   if (!curThreadId) { toast('没有可保存的内容'); return; }
@@ -765,6 +887,133 @@ function drawRadar(vals) {
   });
   return `<svg viewBox="-10 0 280 220" width="100%" style="display:block;">${grid}${axes}${dataPoly}${labs}</svg>`;
 }
+
+/* ===================== 探索卡 PNG 导出（canvas 手绘，零依赖） ===================== */
+function escLines(s) { return (s || '').trim().split(/\n+/).filter(Boolean); }
+function exportCard(id) {
+  const t = DB.threads.find(x => x.id === id) || getCur(); if (!t) { toast('找不到这条探索'); return; }
+  try {
+    const url = drawCard(t);
+    const a = document.createElement('a');
+    a.href = url; a.download = `探奇-探索卡-${new Date().toISOString().slice(0, 10)}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('探索卡已生成 📥');
+  } catch (e) { toast('生成失败，请重试'); console.error(e); }
+}
+function drawCard(t) {
+  const W = 750, PAD = 56, INNER = W - PAD * 2;
+  const GREEN = '#0E6B50', CORAL = '#FF8A5B', INK = '#1c2b25', MUTED = '#7a8a83', LINE = '#e3ebe6', SOFT = '#E6F2EC';
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  const family = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+  /* 先按段落收集要画的内容，测量高度后再定画布高度 */
+  const d = t.stageData || {}, da = (d.define || {}).answers || {}, ca = (d.collab || {}).answers || {}, va = (d.verify || {}).answers || {};
+  const im = d.improve || {};
+  const blocks = [];
+  const B = (kicker, paras, opts) => blocks.push({ kicker, paras, opts: opts || {} });
+  B('捕捉 · 我记下的', escLines(t.raw || t.title || '—'), {});
+  if (da.problem) B('定义 · 我要解决的问题', escLines(da.problem), { hero: true });
+  if (ca.direction || ca.reason) {
+    const p = [];
+    if (ca.direction) p.push('我的方向：' + ca.direction);
+    if (ca.reason) p.push('我的理由：' + ca.reason);
+    B('协作 · 我的判断与方案', p, {});
+  }
+  if (ca.ai && ca.ai.text) B('AI 协作 · ' + (ca.ai.mode || '反馈'), escLines(ca.ai.text), { ai: true });
+  if (ca.solution) B('合成方案', escLines(ca.solution), {});
+  if (va.test || va.result) {
+    const p = [];
+    if (va.test) p.push('我做了什么：' + va.test);
+    if (va.result) p.push('真实结果：' + va.result);
+    if (va.verdict) p.push('我的判断：' + (va.verdict === 'valid' ? '✅ 有效' : '❌ 错了，需要修订'));
+    B('验证 · 做一次，看看真假', p, {});
+  }
+  if (va.revision) B('修订', escLines(va.revision), {});
+  const rv = threadReview(t);
+  B('这一趟，我练到了', rv.trained.map(x => '✓ ' + x.replace(/^[^：]+：/, '')), { green: true });
+  B('下次留意', rv.watch.map(x => '→ ' + x), { coral: true });
+  if (im.note) B('我想再试一点', escLines(im.note), {});
+  if (im.aiReview) B('AI 的点评', escLines(im.aiReview), { ai: true });
+
+  /* 测量换行 */
+  const wrap = (text, maxW) => {
+    const lines = []; let cur = '';
+    for (const ch of String(text)) {
+      const test = cur + ch;
+      if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = ch; }
+      else cur = test;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+  ctx.font = `400 26px ${family}`;
+  blocks.forEach(b => {
+    b.render = [];
+    b.paras.forEach(p => { wrap(p, INNER - 30).forEach(l => b.render.push(l)); });
+  });
+  const totalH = 250 + blocks.reduce((h, b) => h + 74 + b.render.length * 40 + 16, 0) + 170;
+  const dpr = 2;
+  c.width = W * dpr; c.height = totalH * dpr;
+  ctx.scale(dpr, dpr);
+
+  /* 背景 */
+  ctx.fillStyle = '#F5F7F5'; ctx.fillRect(0, 0, W, totalH);
+  /* 顶部品牌区 */
+  const gh = ctx.createLinearGradient(0, 0, W, 210);
+  gh.addColorStop(0, GREEN); gh.addColorStop(1, '#126b50');
+  ctx.fillStyle = gh; ctx.fillRect(0, 0, W, 210);
+  ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(W - 60, 40, 120, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = `800 54px ${family}`; ctx.textBaseline = 'top';
+  ctx.fillText('探奇', PAD, 44);
+  ctx.font = `500 22px ${family}`; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Mind Gym · 探索卡', PAD + 118, 74);
+  ctx.font = `500 25px ${family}`; ctx.fillStyle = '#fff';
+  ctx.fillText('从一句纳闷，到一次真正的验证', PAD, 128);
+  const stamp = new Date(t.finishedAt || t.updatedAt || Date.now()).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+  ctx.font = `400 19px ${family}`; ctx.fillStyle = 'rgba(255,255,255,.75)';
+  ctx.fillText('记录于 ' + stamp, PAD, 172);
+
+  let y = 210 + 34;
+  blocks.forEach(b => {
+    const rows = b.render.length;
+    const boxH = 60 + rows * 40;
+    /* 卡片 */
+    ctx.fillStyle = '#fff';
+    roundRect(ctx, PAD - 16, y, W - (PAD - 16) * 2, boxH, 20); ctx.fill();
+    if (b.opts.hero) { ctx.strokeStyle = GREEN; ctx.lineWidth = 3; roundRect(ctx, PAD - 16, y, W - (PAD - 16) * 2, boxH, 20); ctx.stroke(); }
+    /* kicker */
+    ctx.fillStyle = b.opts.coral ? CORAL : (b.opts.ai ? '#3a7d68' : GREEN);
+    ctx.font = `800 21px ${family}`;
+    ctx.fillText(b.kicker, PAD, y + 20);
+    /* 正文 */
+    let ty = y + 56;
+    b.render.forEach(line => {
+      ctx.font = `${b.opts.hero ? 700 : 400} ${b.opts.hero ? 30 : 25}px ${family}`;
+      ctx.fillStyle = b.opts.hero ? CORAL : (b.opts.green ? GREEN : INK);
+      if (b.opts.hero) ctx.font = `800 27px ${family}`;
+      ctx.fillText(line, PAD, ty);
+      ty += 40;
+    });
+    y += boxH + 18;
+  });
+
+  /* 底部鼓励 */
+  const enc = ['你不是在找答案，你是在长出找答案的能力。', '每一次“我原以为”，都让判断更准一点。', '慢一点想，比快一点答，更值钱。'];
+  const pick = enc[Math.abs(hashStr(t.id || 'x')) % enc.length];
+  ctx.fillStyle = SOFT; roundRect(ctx, PAD - 16, y + 6, W - (PAD - 16) * 2, 96, 20); ctx.fill();
+  ctx.fillStyle = GREEN; ctx.font = `700 24px ${family}`;
+  ctx.fillText(pick, PAD, y + 34);
+  ctx.font = `400 18px ${family}`; ctx.fillStyle = MUTED;
+  ctx.fillText('探奇 · 不打卡，不排名，只看见自己在变强', PAD, y + 68);
+  return c.toDataURL('image/png');
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+}
+function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 /* ---------- 启动 ---------- */
 function init() {
