@@ -331,86 +331,154 @@ function openThread(id) {
 }
 function getCur() { return DB.threads.find(x => x.id === curThreadId); }
 
-const STAGE_META = {
-  2: { key: 'define', label: '定义 · 第2步/共5', why: '把一个“说不清哪儿怪”的感觉，变成一句能去验证的话。这是“洞察 / 定义”的练习。',
-       help: '① 核心：到底在困惑什么？\n② 目标：你想弄明白啥？\n③ 卡点：现在卡住你的是哪一点？\n④ 标准：怎样算弄明白了？',
-       qs: ['到底在困惑什么？（核心）', '你想弄明白啥？（目标）', '现在卡住你的是哪一点？（卡点）', '怎样算弄明白了？（标准）'],
-       nextLabel: '下一步：先写下你自己的判断，再看几种思路 →' },
-  3: { key: 'collab', label: '协作 · 第3步/共5', why: '在瞅任何“答案”之前，先说出你自己的判断和理由。这是不被 AI 带着走的关键一步。',
-       help: '写下你的初步想法和为什么。下面会列出几种思路路径（M1 先用示例填充）。记住：你的判断先到，别人的后到。',
-       qs: ['先写下你自己的判断 + 理由（你的想法先到，别人的后到）', '这条涉及 钱 / 安全 / 健康 / 法律？'],
-       nextLabel: '下一步：去做点什么，验证一下你的想法 →' },
-  4: { key: 'verify', label: '验证 · 第4步/共5', why: '想法对不对，得试试才知道。做了啥、你以为会怎样、实际怎样、你判断对了没。',
-       help: '记一个动作 + 你预期的结果 + 真实结果。如果是钱 / 安全 / 健康 / 法律类的高风险，必须先查来源才能收尾。',
-       qs: ['做了啥？（一个最小可行动作）', '你预期会怎样？', '实际怎样？', '你的判断：有效，还是错了？'],
-       nextLabel: '下一步：看看怎么把这几步练得更顺 →' },
-  5: { key: 'improve', label: '进阶 · 第5步/共5', why: '不是打分，是支招：发现、定义、验证这三步，下次怎么更利索。',
-       help: '回头看这条探索：捕捉时是不是太犹豫？定义时核心清楚吗？验证时查来源了吗？挑一个点，下次试试。',
-       qs: ['下次试一点：挑一个最想改进的点'],
-       nextLabel: '收尾啦 🎉 回到首页 →' }
+/* ===================== 引导式对话引擎 =====================
+   设计：一次只问一个问题；基于捕捉原文与上一步追问；对话可回看、可点开修订。
+   数据：stageData[key] = { answers:{stepId:value}, progress:n, ... }
+*/
+const STAGES = {
+  2: { key:'define', label:'定义 · 第2步/共5', why:'把“说不清哪儿怪”的感觉，逼成一句能去验证的问题。五步来，别跳。',
+       nextLabel:'下一步：说出你自己的判断 →' },
+  3: { key:'collab', label:'协作 · 第3步/共5', why:'先看 AI 之前的答案之前，先说你的。你的判断先到，AI 后到——这是不被带着走的关键。',
+       nextLabel:'下一步：去验证这个方案 →' },
+  4: { key:'verify', label:'验证 · 第4步/共5', why:'想法对不对，做了才知道。按验证建议做一次最小测试，记下真实结果，再回头修订。',
+       nextLabel:'下一步：看看怎么练得更顺 →' },
+  5: { key:'improve', label:'进阶 · 第5步/共5', why:'不是打分。回头看整段对话，挑一个下次能改的点。',
+       nextLabel:'收尾啦 🎉 回到首页 →' }
 };
+/* 每个环节的对话脚本。type: text 普通输入 / template 汇总填空 / ai AI 协作 / advice 验证建议 / verdict 二选一 */
+const FLOWS = {
+  define: { intro:'跟着下面的问题走。只写观察到的事实，不写解释、不着急下结论。', steps:[
+    { id:'now', label:'① 现状', q:'现在实际发生的是什么？', hint:'一句话。只写你观察到的事实，不写解释。', ph:'例：课间大家都低头刷手机，几乎没人说话' },
+    { id:'std', label:'② 标准', q:'本来应该是什么样？', hint:'参照可以是自己的期望、岗位要求、常识基准，或你认可的某个做法。', ph:'例：我希望课间能有人说说话' },
+    { id:'gap', label:'③ 差距', q:'现状与标准之间，具体差在哪？', hint:'只写一个最关键的差距，不要罗列。', ph:'例：大家宁愿刷手机也不愿开口' },
+    { id:'cost', label:'④ 后果', q:'这个差距造成了什么可识别的后果？不解决会怎样？', hint:'要具体，不能是“不好”“难受”。', ph:'例：一学期下来我没交到什么新朋友' },
+    { id:'problem', label:'⑤ 问题定义', q:'把前四步压成一句话。', hint:'最后那个“问题”必须可验证——能通过行动观察它是否被解决。', ph:'', type:'template' }
+  ]},
+  collab: { intro:'先给方向、再说理由。然后选 AI 怎么帮你：出完整方案，或专门挑你判断的毛病。', steps:[
+    { id:'direction', label:'① 你的方向', q:'针对这个问题，你倾向怎么解决？', hint:'先给一个方向，不用完美。AI 一会儿会帮你，也可能反驳你。', ph:'例：我想在课间主动找人聊一句' },
+    { id:'reason', label:'② 你的理由', q:'为什么是这个方向？你依据什么？', hint:'依据可以是你的经验、常识，或你查过的东西。', ph:'例：因为不主动就永远没人先找我' },
+    { id:'ai', label:'③ AI 协作', q:'让 AI 帮你推进这一步', hint:'选一种协作方式——它会基于你的问题、方向和理由来回应。', type:'ai' },
+    { id:'solution', label:'④ 最终方案', q:'把你的判断和 AI 的反馈，合成一个方案。', hint:'这是你认可的方案，下一步就去验证它。', ph:'例：下周挑 3 天，课间主动跟旁边的人说一句话' }
+  ]},
+  verify: { intro:'先给你一份验证建议。照着做一次最小测试，记下真实发生的事，再回头修订。', steps:[
+    { id:'advice', label:'① 验证建议', q:'这样验证你的方案', hint:'照这个做一次最小测试。建议来自本地模板；填了 Key 可让 AI 定制。', type:'advice' },
+    { id:'test', label:'② 原型测试', q:'在这个建议下，你具体做了什么？', hint:'一个最小动作 / 一个粗糙原型，写具体做了啥。', ph:'例：周二课间主动跟同桌说了“昨天那题你会吗”' },
+    { id:'result', label:'③ 实际结果', q:'真实发生了什么？', hint:'写观察到的事实，不写“感觉还行”。', ph:'例：他愣了一下，跟我聊了两分钟' },
+    { id:'verdict', label:'④ 判断', q:'你的判断：有效，还是错了？', hint:'对照你要解决的问题——它被解决了吗？', type:'verdict' },
+    { id:'revision', label:'⑤ 修订', q:'根据结果，怎么修订你的判断或方案？', hint:'这一步会更新你前面整段对话，让它更接近真相。', ph:'例：直接问问题有用，下次可以从共同话题切入' }
+  ]},
+  improve: { intro:'回头看整段对话，只挑一个下次能改的点。', steps:[
+    { id:'note', label:'下次试一点', q:'下次，你最想改进这一步的哪里？', hint:'挑一个点就够。', ph:'例：定义时“后果”写得太笼统，下次要写具体数字' }
+  ]}
+};
+function getFlow(key){ return FLOWS[key]; }
 
+/* 初始化/补全某环节的对话状态 */
+function ensureFlow(t, key) {
+  t.stageData = t.stageData || {};
+  const d = t.stageData[key] || {};
+  if (!d.answers) d.answers = {};
+  if (typeof d.progress !== 'number') d.progress = 0;
+  t.stageData[key] = d;
+  return d;
+}
+/* 预填第 5 步“问题定义”：把前四步拼成模板句 */
+function problemTemplate(t) {
+  const a = (t.stageData.define || {}).answers || {};
+  if (!a.now) return '';
+  return `现状${a.now}，标准是${a.std || '___'}，差距在${a.gap || '___'}，导致${a.cost || '___'}，所以我需要解决的问题是___。`;
+}
+/* 渲染对话流：已答的回合可点开修改；当前回合高亮输入 */
 function renderStage() {
   const t = getCur(); if (!t) return;
-  const m = STAGE_META[curStage]; if (!m) return;
+  const m = STAGES[curStage]; if (!m) return;
+  const key = m.key, flow = getFlow(key);
+  const d = ensureFlow(t, key);
   el('stage-label').textContent = m.label;
   let body = `<div class="stage-why">${m.why}<button class="help-pill" onclick="toggleHelp()">?</button></div>
-    <div class="help-sheet" id="help-sheet">${m.help.replace(/\n/g, '<br>')}</div>`;
+    <div class="help-sheet" id="help-sheet">${esc(flow.intro)}</div>`;
   body += stepperHTML(curStage);
-  body += qcardHTML(m.qs);
-  const d = t.stageData[m.key] || {};
-  if (m.key === 'define') {
-    body += `<div class="stage-form">
-      ${stepHTML('① 核心', '到底在困惑什么？', 'f-core', d.core)}
-      ${stepHTML('② 目标', '你想弄明白啥？', 'f-goal', d.goal)}
-      ${stepHTML('③ 卡点', '现在卡住你的是哪一点？', 'f-blocker', d.blocker)}
-      ${stepHTML('④ 标准', '怎样算弄明白了？', 'f-success', d.success)}
-    </div>`;
-  } else if (m.key === 'collab') {
-    body += `<div class="stage-form">
-      <div class="stage-step">
-        <div><span class="st-num">✍️</span><span class="st-label">先写下你的判断 + 理由</span></div>
-        <div class="st-hint">你的想法先到，别人的后到。</div>
-        <textarea id="f-leaning" placeholder="我的初步想法是……因为……">${esc(d.leaning)}</textarea>
-      </div>
-      <div class="stage-step">
-        <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);">
-          <input type="checkbox" id="f-risk" ${d.risk ? 'checked' : ''}/> 这条涉及 钱 / 安全 / 健康 / 法律？
-        </label>
-      </div>
-      <div id="collab-options" style="display:${d.leaning ? 'block' : 'none'};">
-        ${aiStatusLine()}
-        <div class="guide-q">AI 思路路径（M1 为示例占位 · M2 接入真实 AI 与你协作）</div>
-        <div class="ai-msg">① 换个角度：把问题反过来想，会怎样？</div>
-        <div class="ai-msg">② 拆小一点：能不能先验证其中最小的一块？</div>
-        <div class="ai-msg">③ 找真人聊聊：谁可能真遇过这回事？</div>
-      </div>
-    </div>`;
-  } else if (m.key === 'verify') {
-    body += `<div class="stage-form">
-      ${stepHTML('做了啥', '一个最小可行动作', 'f-action', d.action)}
-      ${stepHTML('你预期', '以为会发生什么', 'f-expected', d.expected)}
-      ${stepHTML('实际怎样', '真实发生了什么', 'f-actual', d.actual)}
-      <div class="stage-step">
-        <div class="st-label">你的判断</div>
-        <div class="judge-group">
-          <button id="j-valid" class="${d.judgment === 'valid' ? 'on' : ''}" onclick="setJudge('valid')">✅ 有效</button>
-          <button id="j-wrong" class="${d.judgment === 'wrong' ? 'on' : ''}" onclick="setJudge('wrong')">❌ 错了</button>
-        </div>
-      </div>
-      <div class="stage-step"><div class="st-label">来源 / 原始资料（可选）</div>
-        <textarea id="f-source" placeholder="贴一个你核对过的来源链接或资料">${esc(d.source)}</textarea></div>
-      <div class="risk-bar" id="risk-bar" style="display:${d.risk ? 'block' : 'none'};">这条涉及风险，先贴个来源再收尾 →</div>
-    </div>`;
-  } else if (m.key === 'improve') {
-    body += `<div class="stage-form">${stepHTML('下次试一点', '挑一个最想改进的点', 'f-note', d.note)}</div>`;
+  body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div></div>`;
+  body += `<div class="dlg" id="dlg">`;
+  flow.steps.forEach((s, i) => {
+    const ans = d.answers[s.id];
+    const isCurrent = i === d.progress;
+    if (ans && !isCurrent) {
+      body += answeredTurn(i, s, ans, key);
+    } else if (isCurrent) {
+      body += currentTurn(i, s, d, t, key);
+    }
+  });
+  body += `</div>`;
+  /* 风险与来源：协作阶段标记，验证阶段补来源（合规硬要求） */
+  if (key === 'collab' || key === 'verify') {
+    body += `<div class="risk-zone" id="risk-zone">${riskZoneHTML(t, key)}</div>`;
   }
-  body += `<div class="summary-card" id="summary-card">${summaryHTML(t, m.key)}</div>`;
+  body += `<div class="summary-card" id="summary-card">${summaryHTML(t, key)}</div>`;
   el('stage-body').innerHTML = body;
   const prevBtn = curStage > 2 ? `<button class="next-btn ghost" id="prev-btn" onclick="prevStage()">‹ 上一步</button>` : '';
+  const done = d.progress >= flow.steps.length;
   el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>`;
   el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
-  updateGate();
+  bindFlow(key, t, d);
+  updateGate(done, key);
+}
+/* 已回答的回合（可点“改”回到该步） */
+function answeredTurn(i, s, ans, key) {
+  let a = ans;
+  if (s.type === 'ai') a = (ans.mode ? '【' + ans.mode + '】' : '') + (ans.text || '').slice(0, 120);
+  if (s.type === 'verdict') a = ans === 'valid' ? '✅ 有效' : '❌ 错了';
+  if (s.type === 'advice') a = '已收到验证建议（可重新生成）';
+  return `<div class="turn done">
+    <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
+    <div class="turn-a">${esc(a || '')}</div>
+    <button class="turn-edit" onclick="editTurn(${i})">改 ✎</button>
+  </div>`;
+}
+/* 当前回合：输入框 / AI 选择 / 验证建议 / 判断 */
+function currentTurn(i, s, d, t, key) {
+  let input = '';
+  if (s.type === 'ai') {
+    input = `<div class="ai-choices">
+      <button class="ai-choice" onclick="runAI('plan')">🛠️ 让 AI 给出完整方案</button>
+      <button class="ai-choice" onclick="runAI('challenge')">⚔️ 让 AI 挑战 / 反驳我的判断</button>
+    </div>
+    ${aiStatusLine()}
+    <div id="ai-result"></div>`;
+  } else if (s.type === 'advice') {
+    input = `<div id="advice-box">${adviceHTML(d)}</div>
+      <div class="advice-actions">
+        <button class="btn-mini" onclick="regenAdvice()">🔄 重新生成建议</button>
+        <button class="btn-mini primary" onclick="answerAdvice()">照这个去做 →</button>
+      </div>`;
+  } else if (s.type === 'verdict') {
+    input = `<div class="judge-group">
+      <button id="j-valid" onclick="setVerdict('valid')">✅ 有效</button>
+      <button id="j-wrong" onclick="setVerdict('wrong')">❌ 错了</button>
+    </div>`;
+  } else {
+    let pre = d.answers[s.id] || '';
+    if (s.type === 'template' && !pre) pre = problemTemplate(t);
+    input = `<textarea id="step-input" placeholder="${esc(s.ph || '')}">${esc(pre)}</textarea>
+      <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
+  }
+  return `<div class="turn current">
+    <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
+    <div class="turn-hint">${esc(s.hint)}</div>
+    ${input}
+  </div>`;
+}
+/* 验证建议 HTML：用真实生成的，没有就本地模板 */
+function adviceHTML(d) {
+  if (d.advice) {
+    const src = d.adviceSource === 'ai' ? 'AI 定制建议' : '本地模板建议';
+    return `<div class="advice-list"><div class="advice-src">${src}</div>${d.advice.map(x => `<div class="advice-row">${esc(x)}</div>`).join('')}</div>`;
+  }
+  return `<div class="advice-list"><div class="advice-src">本地模板建议（填 Key 可让 AI 定制）</div>
+    <div class="advice-row">① 最小动作：只做 1 次，5 分钟内能完成。</div>
+    <div class="advice-row">② 提前写下你预期看到什么，避免事后找理由。</div>
+    <div class="advice-row">③ 只观察一个信号：你定义的问题有没有被解决。</div>
+    <div class="advice-row">④ 涉钱/安全/健康/法律：先查来源再下判断。</div></div>`;
 }
 function stepperHTML(cur) {
   const STEPS = ['捕捉', '定义', '协作', '验证', '进阶'];
@@ -436,108 +504,193 @@ function aiStatusLine() {
   return `<div class="ai-note">🔑 还没填 AI Key？在首页右上角 ⚙️ AI 设置 里填一个，M2 就能真的和你一起想了。</div>`;
 }
 function prevStage() {
-  const t = getCur(); if (!t) return;
-  collectStage();
-  if (curStage > 2) { t.stagePointer = curStage - 1; curStage = curStage - 1; save(); renderStage(); }
+  if (curStage > 2) { const t = getCur(); if (t) { t.stagePointer = curStage - 1; save(); } curStage = curStage - 1; renderStage(); }
 }
-function stepHTML(label, hint, id, val) {
-  return `<div class="stage-step">
-    <div class="st-label">${label}</div>
-    <div class="st-hint">${hint}</div>
-    <textarea id="${id}" placeholder="${hint}">${esc(val)}</textarea></div>`;
-}
-function toggleHelp() { el('help-sheet').classList.toggle('show'); }
+function toggleHelp() { const h = el('help-sheet'); if (h) h.classList.toggle('show'); }
 
+/* ---------- 对话交互 ---------- */
+let editIdx = -1;
+function bindFlow(key, t, d) { editIdx = -1; }
+function answerStep() {
+  const t = getCur(); if (!t) return;
+  const key = STAGES[curStage].key, flow = getFlow(key), d = ensureFlow(t, key);
+  const s = flow.steps[d.progress]; if (!s) return;
+  if (s.type === 'ai' || s.type === 'advice' || s.type === 'verdict') return; // 这些由专用函数推进
+  const val = (el('step-input') && el('step-input').value || '').trim();
+  if (val.length < 2) { toast('多写一点，至少几个字'); return; }
+  d.answers[s.id] = val; d.progress++;
+  if (key === 'verify' && s.id === 'test') d.risk = (d.risk === true);
+  t.updatedAt = Date.now(); save(); renderStage();
+}
+function editTurn(i) {
+  const t = getCur(); if (!t) return;
+  const key = STAGES[curStage].key, d = ensureFlow(t, key);
+  const delKeys = getFlow(key).steps.slice(i).map(s => s.id);
+  delKeys.forEach(k => delete d.answers[k]); // 从这一步起后续回答作废，重新走
+  d.progress = i; t.stageData[key] = d; save(); renderStage();
+  el('stage-body').scrollTop = el('stage-body').scrollHeight;
+}
+function answerAdvice() {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify');
+  d.answers.advice = '已收到验证建议'; d.progress++; t.updatedAt = Date.now(); save(); renderStage();
+}
+function setVerdict(v) {
+  const t = getCur(); if (!t) return;
+  const key = STAGES[curStage].key, d = ensureFlow(t, key);
+  d.answers.verdict = v; d.progress++; t.updatedAt = Date.now(); save(); renderStage();
+}
+/* AI 协作：有 Key 走真实 API，失败/无 Key 走本地模板；结果明确标注来源，不假装智能 */
+async function runAI(mode) {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'collab');
+  const box = el('ai-result');
+  if (box) box.innerHTML = `<div class="ai-loading">AI 正在${mode === 'challenge' ? '挑战你的判断' : '生成方案'}…</div>`;
+  const a = d.answers || {};
+  const problem = ((t.stageData.define || {}).answers || {}).problem || t.title || '';
+  const ctx = `问题：${problem}\n我的方向：${a.direction || ''}\n我的理由：${a.reason || ''}`;
+  const sys = mode === 'challenge'
+    ? '你是思考教练。针对用户的方向和理由，给出2-3条尖锐但友善的反驳/质疑，逼他检视盲点。不要替他下结论。简洁，中文，每条不超过60字。'
+    : '你是思考教练。基于用户的问题、方向和理由，给出一个具体可执行的完整方案，分3步，每步一句话。不要空话。中文，总共不超过150字。';
+  const res = await callAI(sys, ctx);
+  const text = res.ok ? res.text : localAI(mode, a, problem);
+  const source = res.ok ? 'AI 实时生成' : (res.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 不可用，已降级）');
+  d.aiDraft = { mode: mode === 'challenge' ? 'AI 挑战' : 'AI 方案', text, source };
+  t.updatedAt = Date.now(); save();
+  if (box) box.innerHTML = `<div class="ai-result-card">
+    <div class="ai-src">${source}</div>
+    <div class="ai-text">${esc(text)}</div>
+    <button class="btn step-confirm" onclick="answerAI()">采纳，继续 →</button>
+  </div>`;
+}
+function answerAI() {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'collab'); const draft = d.aiDraft || {};
+  d.answers.ai = { mode: draft.mode || 'AI 协作', text: draft.text || '', source: draft.source || '' };
+  d.progress++; save(); renderStage();
+}
+/* 生成验证建议（AI 或本地），写入 verify.answers.advice */
+async function regenAdvice() {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify');
+  const problem = ((t.stageData.define || {}).answers || {}).problem || t.title || '';
+  const solution = ((t.stageData.collab || {}).answers || {}).solution || '';
+  const box = el('advice-box');
+  if (box) box.innerHTML = `<div class="ai-loading">正在生成验证建议…</div>`;
+  const res = await callAI('你是验证教练。针对用户的方案，给出3条具体的验证建议：最小动作、观察信号、判断标准。中文，每条不超过40字。', `问题：${problem}\n方案：${solution}`);
+  if (res.ok) { d.advice = splitAdvice(res.text); d.adviceSource = 'ai'; }
+  else { d.advice = localAdvice(problem, solution); d.adviceSource = 'local'; }
+  save();
+  if (box) box.innerHTML = adviceHTML(d);
+}
+/* 本地降级：明确是模板，不冒充 AI */
+function localAI(mode, a, problem) {
+  if (mode === 'challenge') {
+    return `① 你的方向是「${(a.direction || '这个办法').slice(0, 20)}」——如果不做它，最坏会怎样？\n② 这个判断基于「${(a.reason || '你的理由').slice(0, 20)}」，依据可靠吗，还是只是猜测？\n③ 有没有一个人，和你情况相反却做成了？他怎么做？`;
+  }
+  return `① 针对「${problem.slice(0, 24)}」，先做一个 5 分钟内能完成的最小动作。\n② 动手前写下你预期看到什么。\n③ 做完只对照一个问题：它被解决了吗？`;
+}
+function localAdvice(problem, solution) {
+  return [
+    `① 最小动作：针对「${(solution || problem).slice(0, 22)}」，只做 1 次，5 分钟完成。`,
+    '② 观察信号：动手前写下你预期看到什么，别事后找理由。',
+    '③ 判断标准：只问一件事——你定义的问题有没有被解决。',
+    '④ 涉钱/安全/健康/法律：先查来源再下判断。'
+  ];
+}
+function splitAdvice(text) {
+  return (text || '').split(/\n+/).map(x => x.trim()).filter(Boolean).slice(0, 5);
+}
+/* 真正调用用户自带的 Key（OpenAI 兼容协议）。无 Key / 失败返回结构化的失败原因。 */
+async function callAI(system, user) {
+  const s = DB.settings || {};
+  if (!s.aiKey) return { ok:false, reason:'nokey' };
+  const prov = s.aiProvider || 'deepseek';
+  let url, model;
+  if (prov === 'deepseek') { url = 'https://api.deepseek.com/chat/completions'; model = 'deepseek-chat'; }
+  else if (prov === 'openai') { url = 'https://api.openai.com/v1/chat/completions'; model = 'gpt-4o-mini'; }
+  else { url = (s.aiBase || '').replace(/\/$/, '') + '/chat/completions'; model = 'gpt-4o-mini'; }
+  try {
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + s.aiKey },
+      body: JSON.stringify({ model, messages:[{role:'system',content:system},{role:'user',content:user}], temperature:0.7, max_tokens:500 })
+    });
+    if (!r.ok) return { ok:false, reason:'http_' + r.status };
+    const j = await r.json();
+    const txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (!txt) return { ok:false, reason:'empty' };
+    return { ok:true, text:String(txt).trim() };
+  } catch (e) { return { ok:false, reason:'network_or_cors' }; }
+}
+
+/* 小结：直接汇总对话各回合的答案，不再依赖表单字段 */
 function summaryHTML(t, key) {
-  const d = t.stageData[key] || {};
-  if (key === 'define') {
-    if (!d.core && !d.goal && !d.blocker && !d.success) return '<div class="sc-title">本步小结</div><div class="sc-row" style="color:var(--muted)">边写边会自动记下这里 ✍️</div>';
-    return `<div class="sc-title">本步小结</div>
-      ${d.core ? `<div class="sc-row"><b>核心：</b>${esc(d.core)}</div>` : ''}
-      ${d.goal ? `<div class="sc-row"><b>目标：</b>${esc(d.goal)}</div>` : ''}
-      ${d.blocker ? `<div class="sc-row"><b>卡点：</b>${esc(d.blocker)}</div>` : ''}
-      ${d.success ? `<div class="sc-row"><b>标准：</b>${esc(d.success)}</div>` : ''}`;
-  }
-  if (key === 'collab') {
-    let h = '<div class="sc-title">本步小结</div>';
-    h += d.leaning ? `<div class="sc-row"><b>我的判断：</b>${esc(d.leaning)}</div>` : '<div class="sc-row" style="color:var(--muted)">先写下你的判断</div>';
-    h += `<div class="sc-row"><b>风险标记：</b>${d.risk ? '是（需查来源）' : '否'}</div>`;
-    return h;
-  }
-  if (key === 'verify') {
-    if (!d.action && !d.actual) return '<div class="sc-title">本步小结</div><div class="sc-row" style="color:var(--muted)">记完动作和结果会自动出现在这里</div>';
-    return `<div class="sc-title">本步小结</div>
-      ${d.action ? `<div class="sc-row"><b>动作：</b>${esc(d.action)}</div>` : ''}
-      ${d.expected ? `<div class="sc-row"><b>预期：</b>${esc(d.expected)}</div>` : ''}
-      ${d.actual ? `<div class="sc-row"><b>实际：</b>${esc(d.actual)}</div>` : ''}
-      ${d.judgment ? `<div class="sc-row"><b>判断：</b>${d.judgment === 'valid' ? '✅ 有效' : '❌ 错了'}</div>` : ''}
-      ${d.source ? `<div class="sc-row"><b>来源：</b>${esc(d.source)}</div>` : ''}`;
-  }
-  if (key === 'improve') {
-    return d.note ? `<div class="sc-title">本步小结</div><div class="sc-row">${esc(d.note)}</div>` : '<div class="sc-title">本步小结</div><div class="sc-row" style="color:var(--muted)">挑一个点写下来</div>';
-  }
-  return '';
+  const d = (t.stageData && t.stageData[key]) || {};
+  const a = d.answers || {};
+  const flow = getFlow(key);
+  if (!flow) return '';
+  const pairs = flow.steps.filter(s => a[s.id]).map(s => {
+    let v = a[s.id];
+    if (s.type === 'ai') v = (v.mode || '') + '：' + (v.text || '').slice(0, 80);
+    if (s.type === 'verdict') v = v === 'valid' ? '✅ 有效' : '❌ 错了';
+    if (s.type === 'advice') v = '已收到验证建议';
+    return `<div class="sc-row"><b>${s.label.replace(/^[①②③④⑤]\s*/, '')}：</b>${esc(v)}</div>`;
+  });
+  if (!pairs.length) return '<div class="sc-title">这一步的小结</div><div class="sc-row" style="color:var(--muted)">跟着对话回答，这里会自动汇总</div>';
+  return `<div class="sc-title">这一步的小结</div>${pairs.join('')}`;
 }
-function setJudge(v) {
-  const t = getCur(); t.stageData.collab = t.stageData.collab || {};
-  t.stageData.collab.judgment = v; save();
-  el('j-valid').classList.toggle('on', v === 'valid');
-  el('j-wrong').classList.toggle('on', v === 'wrong');
-  el('summary-card').innerHTML = summaryHTML(t, 'verify'); updateGate();
+/* 门禁：本环节对话走完才允许下一步；验证环节高风险需贴来源 */
+function updateGate(done, key) {
+  const nb = el('next-btn'); const hint = el('next-hint'); if (!nb) return;
+  const t = getCur(); const d = t ? ensureFlow(t, key) : {};
+  const flow = getFlow(key) || { steps:[] };
+  const complete = done !== undefined ? done : (d.progress >= flow.steps.length);
+  const needSource = key === 'verify' && d.risk === true && !(d.source || '').trim();
+  nb.disabled = !complete || needSource;
+  if (hint) {
+    if (!complete) hint.textContent = `还有 ${Math.max(0, flow.steps.length - (d.progress || 0))} 个问题没答完`;
+    else if (needSource) hint.textContent = '这条涉及风险，先在对话里补一个来源再收尾';
+    else hint.textContent = '';
+  }
 }
-function updateGate() {
+/* 高风险标记：协作阶段问一句，写进 verify，供验证阶段门禁使用 */
+function riskZoneHTML(t, stageKey) {
+  const vd = ensureFlow(t, 'verify');
+  return `<label class="risk-check"><input type="checkbox" ${vd.risk ? 'checked' : ''} onchange="setRisk(this.checked)"/> 这条涉及 钱 / 安全 / 健康 / 法律？</label>`
+    + (stageKey === 'verify' && vd.risk
+       ? `<div class="source-row"><div class="st-hint">高风险：验证前必须核对来源</div><input id="f-source" class="src-input" placeholder="贴来源链接或资料" value="${esc(vd.source || '')}" oninput="setSource(this.value)"/></div>`
+       : '');
+}
+function setRisk(v) {
   const t = getCur(); if (!t) return;
-  const m = STAGE_META[curStage].key;
-  const nb = el('next-btn');
-  const hint = el('next-hint');
-  if (m === 'collab') {
-    const lean = (el('f-leaning').value || '').trim();
-    el('collab-options').style.display = lean.length >= 8 ? 'block' : 'none';
-    nb.disabled = lean.length < 8;
-    if (hint) hint.textContent = lean.length < 8 ? '先写下你的判断（至少 8 个字），下一步才会亮起' : '';
-  } else if (m === 'verify') {
-    const act = (el('f-action').value || '').trim();
-    const act2 = (el('f-actual').value || '').trim();
-    const risk = el('f-risk').checked;
-    const src = (el('f-source').value || '').trim();
-    nb.disabled = !(act && act2) || (risk && !src);
-    el('risk-bar').style.display = risk ? 'block' : 'none';
-    if (hint) {
-      if (!(act && act2)) hint.textContent = '记一个“动作”和“真实结果”，下一步才会亮起';
-      else if (risk && !src) hint.textContent = '这条涉及风险，先贴一个来源再收尾';
-      else hint.textContent = '';
-    }
-  } else { nb.disabled = false; if (hint) hint.textContent = ''; }
+  ensureFlow(t, 'verify').risk = (v === true || v === 'true'); save();
+  const zone = el('risk-zone'); if (zone) zone.innerHTML = riskZoneHTML(t, STAGES[curStage].key);
+  toast((v === true || v === 'true') ? '已标记高风险，验证时需查来源' : '已取消风险标记');
+  updateGate(undefined, STAGES[curStage].key);
 }
-function collectStage() {
+function setSource(v) {
   const t = getCur(); if (!t) return;
-  const key = STAGE_META[curStage].key;
-  const d = t.stageData[key] || {};
-  if (key === 'define') { d.core = el('f-core').value; d.goal = el('f-goal').value; d.blocker = el('f-blocker').value; d.success = el('f-success').value; }
-  else if (key === 'collab') { d.leaning = el('f-leaning').value; d.risk = el('f-risk').checked; }
-  else if (key === 'verify') { d.action = el('f-action').value; d.expected = el('f-expected').value; d.actual = el('f-actual').value; d.source = el('f-source').value; d.risk = el('f-risk').checked; if (!d.judgment) d.judgment = el('j-valid').classList.contains('on') ? 'valid' : (el('j-wrong').classList.contains('on') ? 'wrong' : null); }
-  else if (key === 'improve') { d.note = el('f-note').value; }
-  t.stageData[key] = d; t.updatedAt = Date.now(); save();
-}
-function onStageInput() {
-  collectStage();
-  const t = getCur();
-  el('summary-card').innerHTML = summaryHTML(t, STAGE_META[curStage].key);
-  updateGate();
+  const d = ensureFlow(t, 'verify'); d.source = v; save();
+  updateGate(undefined, 'verify');
 }
 function nextStage() {
   const t = getCur(); if (!t) return;
-  collectStage();
+  const key = STAGES[curStage].key, d = ensureFlow(t, key), flow = getFlow(key);
+  if (d.progress < flow.steps.length) { toast('先把这段对话走完'); return; }
+  if (key === 'verify' && d.risk === true && !(d.source || '').trim()) { toast('这条涉及风险，先补来源'); return; }
   if (curStage < 5) { t.stagePointer = curStage + 1; curStage = curStage + 1; save(); renderStage(); }
   else { t.status = 'done'; t.stagePointer = 5; save(); goHome(); toast('收尾啦 🎉'); }
 }
 function saveDraft() {
-  if (curThreadId) { collectStage(); toast('已存草稿 💾'); }
-  else toast('没有可保存的内容');
+  if (!curThreadId) { toast('没有可保存的内容'); return; }
+  const inp = el('step-input');
+  if (inp && inp.value.trim()) { // 把当前正在写、未确认的半句也存下来
+    const key = STAGES[curStage].key, d = ensureFlow(getCur(), key), s = getFlow(key).steps[d.progress];
+    if (s) d.answers[s.id] = inp.value.trim();
+  }
+  save(); toast('已存草稿 💾');
 }
-document.addEventListener('input', e => {
-  if (el('s-stage').classList.contains('active') && e.target.closest('#stage-body')) onStageInput();
-});
 
 /* ---------- 我的成长 ---------- */
 function setName() {
@@ -557,10 +710,11 @@ function renderMine() {
   el('name-card').style.display = DB.user.name ? 'none' : 'block';
   const threads = DB.threads;
   const total = threads.length;
-  const defined = threads.filter(t => t.stageData.define && t.stageData.define.core).length;
-  const verified = threads.filter(t => t.stageData.verify && t.stageData.verify.actual).length;
-  const judged = threads.filter(t => t.stageData.collab && t.stageData.collab.leaning).length;
-  const risk = threads.filter(t => t.stageData.collab && t.stageData.collab.risk).length;
+  const hasA = (t, key, id) => !!(t.stageData && t.stageData[key] && t.stageData[key].answers && t.stageData[key].answers[id]);
+  const defined = threads.filter(t => hasA(t, 'define', 'problem')).length;
+  const verified = threads.filter(t => hasA(t, 'verify', 'result')).length;
+  const judged = threads.filter(t => hasA(t, 'collab', 'direction')).length;
+  const risk = threads.filter(t => t.stageData && t.stageData.verify && t.stageData.verify.risk).length;
   const score = Math.min(100, total * 10 + defined * 15 + verified * 20);
   el('ring-num').textContent = score;
   el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
