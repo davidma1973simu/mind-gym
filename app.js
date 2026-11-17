@@ -28,7 +28,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  return { user: { name: null, isMinor: false, guardianPhone: '', consent: false, ageConfirmed: false }, threads: [], settings: {} };
+  return { user: { name: null, isMinor: false, guardianPhone: '', consent: false, ageConfirmed: false, aboutClosed: false }, threads: [], settings: {} };
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {} }
 function el(id) { return document.getElementById(id); }
@@ -232,8 +232,10 @@ function railHTML(t) {
 /* ---------- 首页 About 轮播 ---------- */
 function renderAbout() {
   const box = el('about-card'); if (!box) return;
+  box.style.display = DB.user.aboutClosed ? 'none' : '';
   const s = ABOUT_SLIDES[aboutIdx];
   box.innerHTML = `
+    <button class="ab-close" title="收起介绍" onclick="event.stopPropagation();closeAbout()">×</button>
     <div class="ab-kicker">${s.kicker}</div>
     <div class="ab-emoji">${s.emoji}</div>
     <div class="ab-title">${s.title}${s.title2 ? `<br>${s.title2}` : ''}</div>
@@ -244,7 +246,19 @@ function renderAbout() {
     </div>`;
 }
 function aboutGo(i) { aboutIdx = (i + ABOUT_SLIDES.length) % ABOUT_SLIDES.length; renderAbout(); restartAbout(); }
-function restartAbout() { clearInterval(aboutTimer); aboutTimer = setInterval(() => aboutGo(aboutIdx + 1), 4200); }
+function restartAbout() { if (DB.user.aboutClosed) return; clearInterval(aboutTimer); aboutTimer = setInterval(() => aboutGo(aboutIdx + 1), 4200); }
+function closeAbout() {
+  DB.user.aboutClosed = true; save();
+  clearInterval(aboutTimer);
+  const box = el('about-card'); if (box) box.style.display = 'none';
+  toast('已收起，可在「我的」里重新打开');
+}
+function reopenAbout() {
+  DB.user.aboutClosed = false; save();
+  aboutIdx = 0; renderAbout(); restartAbout();
+  go('s-home');
+  toast('介绍已重新显示 🌿');
+}
 
 function toggleFold() {
   foldOpen = !foldOpen;
@@ -344,7 +358,7 @@ const STAGES = {
   4: { key:'verify', label:'验证 · 第4步/共5', why:'想法对不对，做了才知道。按验证建议做一次最小测试，记下真实结果，再回头修订。',
        nextLabel:'下一步：看看怎么练得更顺 →' },
   5: { key:'improve', label:'进阶 · 第5步/共5', why:'看见自己练到了什么，再挑一个下次能改的点。',
-       nextLabel:'完成这一趟，生成我的探索卡 →' }
+       nextLabel:'完成这一趟 →' }
 };
 /* 每个环节的对话脚本。type: text 普通输入 / template 汇总填空 / ai AI 协作 / advice 验证建议 / verdict 二选一 */
 const FLOWS = {
@@ -506,8 +520,11 @@ function renderStage() {
     <div class="help-sheet" id="help-sheet">${esc(flow.intro)}</div>`;
   body += stepperHTML(curStage);
   body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div></div>`;
-  /* 进阶屏：先给真实成长反馈，再让用户写一个改进点 */
-  if (key === 'improve') body += `<div id="review-slot">${reviewHTML(t)}</div>`;
+  /* 进阶屏：先给真实成长反馈，再让用户写一个改进点；走完显示完成卡 */
+  if (key === 'improve') {
+    body += `<div id="review-slot">${reviewHTML(t)}</div>`;
+    if (t.status === 'done') body += finishCardHTML(t);
+  }
   body += `<div class="dlg" id="dlg">`;
   flow.steps.forEach((s, i) => {
     const ans = d.answers[s.id];
@@ -535,7 +552,15 @@ function renderStage() {
       <button class="exit-btn" onclick="finishThread('dropped')">🚫 放下</button>
     </div>
   </div>`;
-  el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>${exitBar}`;
+  if (t.status === 'done') {
+    /* 已完成：底部收口，避免与完成卡重复触发 nextStage */
+    el('stage-footer').innerHTML = `<div class="foot-row">
+      <button class="next-btn ghost" onclick="goHome()">← 回到首页</button>
+      <button class="next-btn coral" onclick="exportCard('${t.id}',true)">📥 再存一张卡</button>
+    </div>`;
+  } else {
+    el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>${exitBar}`;
+  }
   el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
   bindFlow(key, t, d);
   updateGate(done, key);
@@ -810,24 +835,22 @@ function nextStage() {
   if (key === 'verify' && d.risk === true && !(d.source || '').trim()) { toast('这条涉及风险，先补来源'); return; }
   if (curStage < 5) { t.stagePointer = curStage + 1; curStage = curStage + 1; save(); renderStage(); }
   else {
+    /* 走完留在进阶屏，完成卡在进阶屏内显示（不再弹到首页，首页保持极简） */
     t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); save();
-    showCardReady(t);
+    renderStage();
+    toast('这一趟，走完了 🎉');
   }
 }
-/* 完成一整趟后，弹“探索卡”邀请（PNG 可下载），不是直接丢回首页 */
-function showCardReady(t) {
-  const fb = el('home-feedback'); if (!fb) { goHome(); return; }
-  goHome();
-  fb.innerHTML = `<div class="fb-card card-ready">
-    <div class="fb-ok">这一趟，走完了 🎉</div>
-    <div class="fb-text">从一句“纳闷”，到你亲手定义、验证、修订的问题。值得留一张卡。</div>
-    <div class="fb-actions">
-      <button class="fb-go" onclick="exportCard('${t.id}')">📥 生成探索卡</button>
-      <button class="fb-more" onclick="closeFeedback()">先不用</button>
-    </div></div>`;
-  fb.classList.add('show');
+/* 完成卡：只在进阶屏内显示，由 renderStage 注入 */
+function finishCardHTML(t) {
+  return `<div class="finish-card">
+    <div class="finish-emoji">🎉</div>
+    <div class="finish-title">这一趟，走完了</div>
+    <div class="finish-text">从一句"纳闷"，到你亲手定义、验证、修订的问题。值得留一张卡。</div>
+    <button class="btn finish-btn" onclick="exportCard('${t.id}',true)">📥 生成我的探索卡</button>
+    <div class="finish-foot">不打卡，不排名——这张卡，只属于你自己。</div>
+  </div>`;
 }
-function closeFeedback() { const fb = el('home-feedback'); if (fb) fb.classList.remove('show'); }
 /* 随时收尾：不是每条探索都要走到验证。想清楚了就能停，状态入库。 */
 function finishThread(status) {
   const t = getCur(); if (!t) return;
@@ -864,6 +887,7 @@ function renderGreet() {
 function renderMine() {
   renderGreet();
   el('name-card').style.display = DB.user.name ? 'none' : 'block';
+  el('reopen-about').style.display = DB.user.aboutClosed ? 'block' : 'none';
   const threads = DB.threads;
   const total = threads.length;
   const hasA = (t, key, id) => !!(t.stageData && t.stageData[key] && t.stageData[key].answers && t.stageData[key].answers[id]);
@@ -924,7 +948,7 @@ function drawRadar(vals) {
 
 /* ===================== 探索卡 PNG 导出（canvas 手绘，零依赖） ===================== */
 function escLines(s) { return (s || '').trim().split(/\n+/).filter(Boolean); }
-function exportCard(id) {
+function exportCard(id, backToHome) {
   const t = DB.threads.find(x => x.id === id) || getCur(); if (!t) { toast('找不到这条探索'); return; }
   try {
     const url = drawCard(t);
@@ -932,112 +956,155 @@ function exportCard(id) {
     a.href = url; a.download = `探奇-探索卡-${new Date().toISOString().slice(0, 10)}.png`;
     document.body.appendChild(a); a.click(); a.remove();
     toast('探索卡已生成 📥');
+    if (backToHome) setTimeout(() => goHome(), 700);
   } catch (e) { toast('生成失败，请重试'); console.error(e); }
 }
 function drawCard(t) {
-  const W = 750, PAD = 56, INNER = W - PAD * 2;
-  const GREEN = '#0E6B50', CORAL = '#FF8A5B', INK = '#1c2b25', MUTED = '#7a8a83', LINE = '#e3ebe6', SOFT = '#E6F2EC';
+  /* 重设计：文字砍半，只留 4 个核心视觉区 + 装饰，面向大中学生审美 */
+  const W = 750, PAD = 48, TXT_W = W - PAD * 2 - 96;
+  const GREEN = '#0E6B50', CORAL = '#FF8A5B', INK = '#1c2b25', MUTED = '#7a8a83', SOFT = '#E7F3ED';
+  const fam = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
-  const family = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
-  /* 先按段落收集要画的内容，测量高度后再定画布高度 */
-  const d = t.stageData || {}, da = (d.define || {}).answers || {}, ca = (d.collab || {}).answers || {}, va = (d.verify || {}).answers || {};
-  const im = d.improve || {};
-  const blocks = [];
-  const B = (kicker, paras, opts) => blocks.push({ kicker, paras, opts: opts || {} });
-  B('捕捉 · 我记下的', escLines(t.raw || t.title || '—'), {});
-  if (da.problem) B('定义 · 我要解决的问题', escLines(da.problem), { hero: true });
-  if (ca.direction || ca.reason) {
-    const p = [];
-    if (ca.direction) p.push('我的方向：' + ca.direction);
-    if (ca.reason) p.push('我的理由：' + ca.reason);
-    B('协作 · 我的判断与方案', p, {});
-  }
-  if (ca.ai && ca.ai.text) B('AI 协作 · ' + (ca.ai.mode || '反馈'), escLines(ca.ai.text), { ai: true });
-  if (ca.solution) B('合成方案', escLines(ca.solution), {});
-  if (va.test || va.result) {
-    const p = [];
-    if (va.test) p.push('我做了什么：' + va.test);
-    if (va.result) p.push('真实结果：' + va.result);
-    if (va.verdict) p.push('我的判断：' + (va.verdict === 'valid' ? '✅ 有效' : '❌ 错了，需要修订'));
-    B('验证 · 做一次，看看真假', p, {});
-  }
-  if (va.revision) B('修订', escLines(va.revision), {});
-  const rv = threadReview(t);
-  B('这一趟，我练到了', rv.trained.map(x => '✓ ' + x.replace(/^[^：]+：/, '')), { green: true });
-  B('下次留意', rv.watch.map(x => '→ ' + x), { coral: true });
-  if (im.note) B('我想再试一点', escLines(im.note), {});
-  if (im.aiReview) B('AI 的点评', escLines(im.aiReview), { ai: true });
+  const F = (size, weight) => `${weight || 400} ${size}px ${fam}`;
 
-  /* 测量换行 */
-  const wrap = (text, maxW) => {
-    const lines = []; let cur = '';
-    for (const ch of String(text)) {
+  function wrap(text, maxW, font) {
+    ctx.font = font; const out = []; let cur = '';
+    for (const ch of String(text == null ? '' : text)) {
+      if (ch === '\n') { if (cur) out.push(cur); cur = ''; continue; }
       const test = cur + ch;
-      if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = ch; }
+      if (ctx.measureText(test).width > maxW && cur) { out.push(cur); cur = ch; }
       else cur = test;
     }
-    if (cur) lines.push(cur);
+    if (cur) out.push(cur);
+    return out;
+  }
+  function cap(text, maxLines, maxW, font) {
+    let lines = wrap(text, maxW, font);
+    if (lines.length <= maxLines) return lines;
+    lines = lines.slice(0, maxLines);
+    ctx.font = font;
+    let last = lines[maxLines - 1];
+    while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+    lines[maxLines - 1] = last + '…';
     return lines;
-  };
-  ctx.font = `400 26px ${family}`;
-  blocks.forEach(b => {
-    b.render = [];
-    b.paras.forEach(p => { wrap(p, INNER - 30).forEach(l => b.render.push(l)); });
+  }
+
+  const d = t.stageData || {}, da = (d.define || {}).answers || {}, ca = (d.collab || {}).answers || {}, va = (d.verify || {}).answers || {}, vd = d.verify || {};
+  const p = problemBuild(t), rv = threadReview(t);
+  const cards = [];
+
+  /* A · 起点 */
+  cards.push({ emoji: '🔍', kicker: '起点 · 我记下的', accent: GREEN,
+    rows: cap(t.raw || t.title || '—', 3, TXT_W, F(26, 500)).map(x => ({ t: x, size: 26, weight: 500, color: INK })) });
+
+  /* B · 问题定义（核心，最突出） */
+  const probRows = [];
+  const seg = [
+    ['现状', p.now, '#2E9E6B'],
+    ['标准是', p.std, '#2E7FB8'],
+    ['差距在', p.gap, '#E08A3C'],
+    ['导致', p.cost, '#C4518B'],
+    ['所以我需要解决的问题是', p.ask, CORAL]
+  ];
+  seg.forEach((segItem) => {
+    const label = segItem[0], val = segItem[1], col = segItem[2], isAsk = label.indexOf('解决的问题') >= 0;
+    const parts = String(val || '').split(/[，,]/).map(x => x.trim()).filter(Boolean);
+    (parts.length ? parts : ['—']).forEach((part, j) => {
+      cap(part, 2, TXT_W - 8, F(isAsk ? 25 : 23, isAsk ? 800 : 600)).forEach(line => {
+        probRows.push({ t: line, size: isAsk ? 25 : 23, weight: isAsk ? 800 : 600, color: isAsk ? CORAL : INK,
+          label: j === 0 ? label : '', labelColor: col });
+      });
+    });
   });
-  const totalH = 250 + blocks.reduce((h, b) => h + 74 + b.render.length * 40 + 16, 0) + 170;
+  cards.push({ emoji: '🎯', kicker: '我把问题说清楚了', accent: CORAL, hero: true, rows: probRows });
+
+  /* C · 验证 */
+  const vRows = [];
+  if (va.verdict) vRows.push({ t: va.verdict === 'valid' ? '✅  我的判断：有效' : '❌  我的判断：偏了，已修订', size: 26, weight: 800, color: va.verdict === 'valid' ? GREEN : CORAL });
+  if (va.test) cap('做了：' + va.test, 2, TXT_W, F(23)).forEach(x => vRows.push({ t: x, size: 23, weight: 400, color: INK }));
+  if (va.result) cap('结果：' + va.result, 2, TXT_W, F(23)).forEach(x => vRows.push({ t: x, size: 23, weight: 400, color: INK }));
+  if (vRows.length) cards.push({ emoji: '🧪', kicker: '我验证了一次', accent: GREEN, rows: vRows });
+
+  /* D · 成长（能力徽章 + 一条留意） */
+  const chips = rv.trained.map(x => String(x).split(/[：:]/)[0]).filter(Boolean).slice(0, 5);
+  const gRows = [];
+  if (chips.length) cap(chips.join('  ·  '), 2, TXT_W, F(24, 800)).forEach(x => gRows.push({ t: x, size: 24, weight: 800, color: GREEN }));
+  if (rv.watch[0]) cap('下次留意：' + rv.watch[0], 2, TXT_W, F(22)).forEach(x => gRows.push({ t: x, size: 22, weight: 400, color: MUTED }));
+  cards.push({ emoji: '💪', kicker: '这一趟，我练到了', accent: GREEN, rows: gRows });
+
+  /* 测量高度 */
+  let y = 250 + 30;
+  cards.forEach(card => { card.h = 66 + card.rows.length * 38; y += card.h + 18; });
+  const totalH = y + 112;
   const dpr = 2;
   c.width = W * dpr; c.height = totalH * dpr;
   ctx.scale(dpr, dpr);
 
   /* 背景 */
-  ctx.fillStyle = '#F5F7F5'; ctx.fillRect(0, 0, W, totalH);
-  /* 顶部品牌区 */
-  const gh = ctx.createLinearGradient(0, 0, W, 210);
-  gh.addColorStop(0, GREEN); gh.addColorStop(1, '#126b50');
-  ctx.fillStyle = gh; ctx.fillRect(0, 0, W, 210);
-  ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(W - 60, 40, 120, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.font = `800 54px ${family}`; ctx.textBaseline = 'top';
-  ctx.fillText('探奇', PAD, 44);
-  ctx.font = `500 22px ${family}`; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Mind Gym · 探索卡', PAD + 118, 74);
-  ctx.font = `500 25px ${family}`; ctx.fillStyle = '#fff';
-  ctx.fillText('从一句纳闷，到一次真正的验证', PAD, 128);
-  const stamp = new Date(t.finishedAt || t.updatedAt || Date.now()).toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-  ctx.font = `400 19px ${family}`; ctx.fillStyle = 'rgba(255,255,255,.75)';
-  ctx.fillText('记录于 ' + stamp, PAD, 172);
+  ctx.fillStyle = '#F4F7F5'; ctx.fillRect(0, 0, W, totalH);
 
-  let y = 210 + 34;
-  blocks.forEach(b => {
-    const rows = b.render.length;
-    const boxH = 60 + rows * 40;
-    /* 卡片 */
-    ctx.fillStyle = '#fff';
-    roundRect(ctx, PAD - 16, y, W - (PAD - 16) * 2, boxH, 20); ctx.fill();
-    if (b.opts.hero) { ctx.strokeStyle = GREEN; ctx.lineWidth = 3; roundRect(ctx, PAD - 16, y, W - (PAD - 16) * 2, boxH, 20); ctx.stroke(); }
-    /* kicker */
-    ctx.fillStyle = b.opts.coral ? CORAL : (b.opts.ai ? '#3a7d68' : GREEN);
-    ctx.font = `800 21px ${family}`;
-    ctx.fillText(b.kicker, PAD, y + 20);
-    /* 正文 */
-    let ty = y + 56;
-    b.render.forEach(line => {
-      ctx.font = `${b.opts.hero ? 700 : 400} ${b.opts.hero ? 30 : 25}px ${family}`;
-      ctx.fillStyle = b.opts.hero ? CORAL : (b.opts.green ? GREEN : INK);
-      if (b.opts.hero) ctx.font = `800 27px ${family}`;
-      ctx.fillText(line, PAD, ty);
-      ty += 40;
+  /* 顶部品牌区（渐变 + 装饰） */
+  const gh = ctx.createLinearGradient(0, 0, W, 250);
+  gh.addColorStop(0, GREEN); gh.addColorStop(1, '#0A5741');
+  ctx.fillStyle = gh; ctx.fillRect(0, 0, W, 250);
+  ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.arc(W - 30, 20, 150, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.arc(W - 170, 230, 96, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(W - 72 - i * 26, 92, 4, 0, Math.PI * 2); ctx.fill(); }
+  ctx.textBaseline = 'top';
+  ctx.font = F(20, 700); ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.fillText('探奇 · MIND GYM', PAD, 32);
+  ctx.font = F(52, 800); ctx.fillStyle = '#fff'; ctx.fillText('这一趟，我走完了', PAD, 76);
+  ctx.font = '58px sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('✦', W - 122, 68);
+  const stamp = new Date(t.finishedAt || t.updatedAt || Date.now()).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  ctx.font = F(19, 400); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText('记录于 ' + stamp, PAD, 152);
+  const steps = ['捕捉', '定义', '协作', '验证', '进阶'];
+  let sx = PAD;
+  steps.forEach((s, i) => {
+    ctx.font = F(18, 700);
+    const tw = ctx.measureText(s).width + 28;
+    ctx.fillStyle = i === 4 ? CORAL : 'rgba(255,255,255,.22)';
+    roundRect(ctx, sx, 196, tw, 34, 17); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(s, sx + 14, 203);
+    sx += tw + 10;
+  });
+
+  /* 内容卡 */
+  y = 250 + 30;
+  cards.forEach(card => {
+    const bx = PAD - 12, bw = W - (PAD - 12) * 2;
+    ctx.fillStyle = '#fff'; roundRect(ctx, bx, y, bw, card.h, 20); ctx.fill();
+    if (card.hero) { ctx.strokeStyle = CORAL; ctx.lineWidth = 3; roundRect(ctx, bx, y, bw, card.h, 20); ctx.stroke(); }
+    ctx.fillStyle = card.hero ? '#FFF0E9' : SOFT;
+    ctx.beginPath(); ctx.arc(bx + 42, y + 42, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.font = '26px sans-serif'; ctx.textBaseline = 'middle'; ctx.fillText(card.emoji, bx + 42, y + 44);
+    ctx.textBaseline = 'top';
+    ctx.font = F(19, 800); ctx.fillStyle = card.accent; ctx.fillText(card.kicker, bx + 78, y + 28);
+    let ry = y + 66;
+    card.rows.forEach(row => {
+      if (row.label) {
+        ctx.font = F(row.size, 800);
+        const lw = ctx.measureText(row.label).width;
+        ctx.fillStyle = row.labelColor; ctx.fillText(row.label, bx + 78, ry);
+        ctx.font = F(row.size, row.weight); ctx.fillStyle = row.color;
+        ctx.fillText(row.t, bx + 86 + lw, ry);
+      } else {
+        ctx.font = F(row.size, row.weight); ctx.fillStyle = row.color;
+        ctx.fillText(row.t, bx + 78, ry);
+      }
+      ry += 38;
     });
-    y += boxH + 18;
+    y += card.h + 18;
   });
 
   /* 底部鼓励 */
   const enc = ['你不是在找答案，你是在长出找答案的能力。', '每一次“我原以为”，都让判断更准一点。', '慢一点想，比快一点答，更值钱。'];
   const pick = enc[Math.abs(hashStr(t.id || 'x')) % enc.length];
-  ctx.fillStyle = SOFT; roundRect(ctx, PAD - 16, y + 6, W - (PAD - 16) * 2, 96, 20); ctx.fill();
-  ctx.fillStyle = GREEN; ctx.font = `700 24px ${family}`;
-  ctx.fillText(pick, PAD, y + 34);
-  ctx.font = `400 18px ${family}`; ctx.fillStyle = MUTED;
-  ctx.fillText('探奇 · 不打卡，不排名，只看见自己在变强', PAD, y + 68);
+  ctx.fillStyle = SOFT; roundRect(ctx, PAD - 12, y, W - (PAD - 12) * 2, 88, 20); ctx.fill();
+  ctx.fillStyle = GREEN; ctx.font = F(23, 700);
+  const footLines = cap(pick, 2, W - (PAD - 12) * 2 - 56, F(23, 700));
+  footLines.forEach((ln, i) => ctx.fillText(ln, PAD + 16, y + 18 + i * 30));
+  if (footLines.length < 2) { ctx.fillStyle = MUTED; ctx.font = F(17, 400); ctx.fillText('探奇 · 不打卡，不排名，只看见自己在变强', PAD + 16, y + 62); }
   return c.toDataURL('image/png');
 }
 function roundRect(ctx, x, y, w, h, r) {
