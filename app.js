@@ -383,20 +383,41 @@ function ensureFlow(t, key) {
   t.stageData[key] = d;
   return d;
 }
-/* 预填第 5 步“问题定义”：把前四步拼成模板句，并自动归纳出可验证的问题，不留空 */
+/* ---------- 问题定义：严格按“现状/标准/差距/导致/所以”格式，逐项重建，绝不留空 ---------- */
 function shortPhrase(s, n) { s = (s || '').trim(); return s.length > n ? s.slice(0, n) + '…' : s; }
+/* 自动归纳“我需要解决的问题”：基于差距与标准，生成一句可验证的问句 */
 function problemInduction(a) {
-  const gcore = shortPhrase(a.gap || a.now || '这个差距', 24);
-  const score = shortPhrase(a.std || '原本应有的样子', 24);
-  return `如何让「${gcore}」回到「${score}」`;
+  const gap = (a.gap || '').trim(), std = (a.std || '').trim(), now = (a.now || '').trim();
+  const core = gap || now;
+  if (!core && !std) return '（先完成前面四步，这里会自动归纳）';
+  if (core && std) return `如何消除「${shortPhrase(core, 26)}」，让「${shortPhrase(std, 26)}」成为现实`;
+  if (core) return `如何消除「${shortPhrase(core, 30)}」`;
+  return `如何让「${shortPhrase(std, 30)}」成为现实`;
 }
-function problemTemplate(t) {
-  const a = (t.stageData.define || {}).answers || {};
-  if (!a.now) return '';
-  const now = shortPhrase(a.now, 40), std = shortPhrase(a.std, 40),
-        gap = shortPhrase(a.gap, 40), cost = shortPhrase(a.cost, 40);
-  return `现状${now}，标准是${std}，差距在${gap}，导致${cost}，所以我需要解决的问题是：${problemInduction(a)}？`;
+/* 判断结论是不是“空 / 下划线 / 旧模板残留”——这类必须重新归纳 */
+function isBlankConclusion(x) {
+  if (!x) return true;
+  const s = String(x).trim();
+  return /^[___—\-—。.\s]*$/.test(s) || /(^|[：:])[\s_]*$/.test(s) || s === '___' || /_{2,}/.test(s) || /（.*自动归纳.*）/.test(s);
 }
+/* 从 define 四步的真实答案重建完整问题定义。old stored problem 里的下划线会被替换。 */
+function problemBuild(t) {
+  const a = ((t.stageData || {}).define || {}).answers || {};
+  const now = (a.now || '').trim() || '（未填现状）';
+  const std = (a.std || '').trim() || '（未填标准）';
+  const gap = (a.gap || '').trim() || '（未填差距）';
+  const cost = (a.cost || '').trim() || '（未填后果）';
+  /* 用户在结论里手写的有效内容优先；否则自动归纳 */
+  let ask = '';
+  const stored = (a.problem || '').trim();
+  const m = stored.match(/所以我需要解决的问题是[：:]?\s*(.*)$/);
+  if (m) ask = m[1].trim();
+  if (isBlankConclusion(ask)) ask = problemInduction(a);
+  ask = ask.replace(/[。．]+$/, '');
+  return { now, std, gap, cost, ask,
+    full: `现状${now}，标准是${std}，差距在${gap}，导致${cost}，所以我需要解决的问题是${ask}。` };
+}
+function problemTemplate(t) { return problemBuild(t).full; }
 /* ---------- 进阶：基于真实数据的成长反馈 ---------- */
 function threadReview(t) {
   const d = t.stageData || {};
@@ -454,18 +475,25 @@ async function deepenReview() {
 function localReview(r) {
   return `你已经把「${(r.trained[0] || '发现困惑').replace(/^[^：]+：/, '')}」练成了习惯，这是最难的起点。${r.watch[0] || ''}下次就试这一件，不用多。`;
 }
-function problemHeroHTML(full) {
-  const s = (full || '').trim();
-  if (!s) return '<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-tail">还没填，先在下面写下来</div></div>';
-  const marker = '所以我需要解决的问题是';
-  const idx = s.indexOf(marker);
-  if (idx < 0) return `<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-tail">${esc(s)}</div></div>`;
-  const head = s.slice(0, idx), tail = s.slice(idx);
-  return `<div class="problem-hero"><div class="ph-label">你的问题定义 · 一句话</div><div class="ph-head">${esc(head)}</div><div class="ph-tail">${esc(tail)}</div></div>`;
+/* 字段内的每个逗号后也断行，后续行缩进对齐 */
+function phValue(v) {
+  return String(v).split(/[，,]/).map(s => s.trim()).filter(Boolean).join('<br>');
+}
+function problemHeroHTML(t) {
+  const p = problemBuild(t);
+  /* 严格格式：每个逗号后换行；标签彩色、放大；结论单独强调 */
+  return `<div class="problem-hero">
+    <div class="ph-label">你的问题定义</div>
+    <div class="ph-line"><span class="ph-k k-now">现状</span><span class="ph-v">${phValue(p.now)}</span></div>
+    <div class="ph-line"><span class="ph-k k-std">标准是</span><span class="ph-v">${phValue(p.std)}</span></div>
+    <div class="ph-line"><span class="ph-k k-gap">差距在</span><span class="ph-v">${phValue(p.gap)}</span></div>
+    <div class="ph-line"><span class="ph-k k-cost">导致</span><span class="ph-v">${phValue(p.cost)}</span></div>
+    <div class="ph-line ph-conclusion"><span class="ph-k k-ask">所以我需要解决的问题是</span><span class="ph-v v-ask">${phValue(p.ask)}</span></div>
+  </div>`;
 }
 function updateProblemHero() {
-  const box = el('problem-hero'), inp = el('step-input');
-  if (box && inp) box.innerHTML = problemHeroHTML(inp.value);
+  const box = el('problem-hero');
+  if (box) box.innerHTML = problemHeroHTML(getCur());
 }
 /* 渲染对话流：已答的回合可点开修改；当前回合高亮输入 */
 function renderStage() {
@@ -518,8 +546,8 @@ function answeredTurn(i, s, ans, key) {
   if (s.type === 'ai') a = (ans.mode ? '【' + ans.mode + '】' : '') + (ans.text || '').slice(0, 120);
   if (s.type === 'verdict') a = ans === 'valid' ? '✅ 有效' : '❌ 错了';
   if (s.type === 'advice') a = '已收到验证建议（可重新生成）';
-  /* 问题定义：用凸显卡，不再是一段灰字 */
-  const body = s.type === 'template' ? problemHeroHTML(ans) : `<div class="turn-a">${esc(a || '')}</div>`;
+  /* 问题定义：用凸显卡，从四步真实数据重建（自动修复旧数据的下划线） */
+  const body = s.type === 'template' ? problemHeroHTML(getCur()) : `<div class="turn-a">${esc(a || '')}</div>`;
   return `<div class="turn done">
     <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
     ${body}
@@ -549,8 +577,8 @@ function currentTurn(i, s, d, t, key) {
     </div>`;
   } else {
     let pre = d.answers[s.id] || '';
-    if (s.type === 'template' && !pre) pre = problemTemplate(t);
-    const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(pre)}</div>` : '';
+    if (s.type === 'template') pre = problemTemplate(t); // 始终用重建后的完整句，修复旧下划线
+    const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(t)}</div>` : '';
     const onIn = s.type === 'template' ? ' oninput="updateProblemHero()"' : '';
     input = `${hero}<textarea id="step-input"${onIn} placeholder="${esc(s.ph || '')}">${esc(pre)}</textarea>
       <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
@@ -612,7 +640,13 @@ function answerStep() {
   if (s.type === 'ai' || s.type === 'advice' || s.type === 'verdict') return; // 这些由专用函数推进
   const val = (el('step-input') && el('step-input').value || '').trim();
   if (val.length < 2) { toast('多写一点，至少几个字'); return; }
-  d.answers[s.id] = val; d.progress++;
+  /* 问题定义：用户若保留/改动后仍留下划线空结论，自动补齐，绝不存坏数据 */
+  if (key === 'define' && s.id === 'problem') {
+    d.answers.problem = problemTemplate(t);
+  } else {
+    d.answers[s.id] = val;
+  }
+  d.progress++;
   if (key === 'verify' && s.id === 'test') d.risk = (d.risk === true);
   t.updatedAt = Date.now(); save(); renderStage();
 }
@@ -729,7 +763,7 @@ function summaryHTML(t, key) {
     if (s.type === 'ai') v = (v.mode || '') + '：' + (v.text || '').slice(0, 80);
     if (s.type === 'verdict') v = v === 'valid' ? '✅ 有效' : '❌ 错了';
     if (s.type === 'advice') v = '已收到验证建议';
-    if (s.type === 'template') return problemHeroHTML(v);
+    if (s.type === 'template') return problemHeroHTML(t);
     return `<div class="sc-row"><b>${s.label}：</b>${esc(v)}</div>`;
   });
   if (!pairs.length) return '<div class="sc-title">这一步的小结</div><div class="sc-row" style="color:var(--muted)">跟着对话回答，这里会自动汇总</div>';

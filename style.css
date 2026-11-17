@@ -193,11 +193,22 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .turn textarea{width:100%;border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:11px;font-size:15px;color:var(--ink);resize:none;font-family:inherit;min-height:78px;line-height:1.5;}
 .turn textarea:focus{outline:none;border-color:var(--green);}
 
-/* 问题定义凸显卡：整句放大、结论用珊瑚色强调 */
-.problem-hero{background:linear-gradient(135deg,#fff 0%,#f7fbf8 100%);border:2px solid var(--green);border-radius:14px;padding:15px 15px 16px;margin:2px 0 12px;box-shadow:0 4px 16px rgba(14,107,80,.1);}
-.problem-hero .ph-label{font-size:11px;font-weight:800;color:var(--green);letter-spacing:1px;margin-bottom:9px;}
-.problem-hero .ph-head{font-size:13.5px;color:var(--ink);line-height:1.65;}
-.problem-hero .ph-tail{font-size:18px;font-weight:800;color:var(--coral);line-height:1.55;margin-top:8px;padding-top:9px;border-top:1px dashed var(--line);word-break:break-word;}
+/* 问题定义凸显卡：严格格式，逐行彩色放大 */
+.problem-hero{background:linear-gradient(135deg,#fff 0%,#f7fbf8 100%);border:2px solid var(--green);border-radius:14px;padding:16px 15px;margin:2px 0 12px;box-shadow:0 4px 16px rgba(14,107,80,.1);}
+.problem-hero .ph-label{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:1px;margin-bottom:12px;}
+.problem-hero .ph-line{font-size:18px;font-weight:700;line-height:1.5;margin-bottom:9px;display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;}
+.problem-hero .ph-k{flex:0 0 auto;font-weight:800;}
+.problem-hero .ph-v{flex:1;min-width:0;word-break:break-word;padding-left:4px;}
+/* 五项标签各用一种强调色 */
+.k-now{color:#1f7a5c;}      /* 现状 · 绿 */
+.k-std{color:#2e6fb0;}      /* 标准 · 蓝 */
+.k-gap{color:#c9762b;}      /* 差距 · 橙 */
+.k-cost{color:#a8506e;}     /* 导致 · 玫红 */
+.k-ask{color:var(--green);} /* 结论标签 · 深绿 */
+/* 结论行：大字、珊瑚色、上方分隔 */
+.problem-hero .ph-conclusion{border-top:2px dashed var(--line);padding-top:12px;margin-top:12px;margin-bottom:0;font-size:18px;}
+.problem-hero .ph-conclusion .ph-k{font-size:17px;}
+.problem-hero .v-ask{font-size:21px;font-weight:800;color:var(--coral);}
 .turn.done .problem-hero{opacity:1;background:#fff;border-color:var(--green-soft);box-shadow:none;}
 
 /* 随时收尾出口：弱化，不抢主按钮 */
