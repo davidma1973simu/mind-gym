@@ -192,6 +192,8 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 .turn-edit{position:absolute;right:10px;bottom:8px;border:none;background:none;color:var(--green);font-size:12px;font-weight:700;}
 .turn textarea{width:100%;border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:11px;font-size:15px;color:var(--ink);resize:none;font-family:inherit;min-height:78px;line-height:1.5;}
 .turn textarea:focus{outline:none;border-color:var(--green);}
+.ex-regen{display:inline-block;border:none;background:none;color:var(--green);font-size:12px;font-weight:700;padding:4px 0;margin-top:2px;cursor:pointer;}
+.ex-regen:disabled{opacity:.55;cursor:default;}
 
 /* 问题定义凸显卡：严格格式，逐行彩色放大 */
 .problem-hero{background:linear-gradient(135deg,#fff 0%,#f7fbf8 100%);border:2px solid var(--green);border-radius:14px;padding:16px 15px;margin:2px 0 12px;box-shadow:0 4px 16px rgba(14,107,80,.1);}

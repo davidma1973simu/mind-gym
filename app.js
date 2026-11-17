@@ -158,6 +158,7 @@ function addThread(raw, media) {
   const t = newThread(raw, media);
   DB.threads.unshift(t); save();
   showFeedback(t); renderHomeThreads();
+  ensureExamples(t);   /* 捕捉后一次性生成全部阶段的主题示例（无 Key/失败自动跳过） */
   return t;
 }
 function submitHome() {
@@ -343,6 +344,7 @@ function openThread(id) {
   curStage = t.stagePointer;
   go('s-stage');
   renderStage();
+  ensureExamples(t);   /* 捕捉时无 Key、后来才填的补救：首次进入阶段时补生成 */
 }
 function getCur() { return DB.threads.find(x => x.id === curThreadId); }
 
@@ -387,6 +389,74 @@ const FLOWS = {
   ]}
 };
 function getFlow(key){ return FLOWS[key]; }
+
+/* ---------- 主题相关示例：捕捉后一次性生成全部输入步骤的示例句 ----------
+   无 Key / 失败一律保持 FLOWS 里的固定示例(s.ph)，不打扰用户。 */
+const EXAMPLE_IDS = ['now','std','gap','cost','direction','reason','solution','test','result','revision','note'];
+const EXAMPLE_HINTS = {
+  now:'现在实际发生的事实', std:'本来应该的样子', gap:'最关键的一处差距',
+  cost:'具体可识别的后果', direction:'你倾向的解决方向', reason:'你选这个方向的依据',
+  solution:'你认可的最终方案', test:'你具体做的最小动作', result:'真实观察到的事实',
+  revision:'根据结果怎么修订判断', note:'下次最想改进的一点'
+};
+/* 兼容：整段 JSON / ```json 围栏 / 每行 "id": "值" / id：值 / 中英文逗号 */
+function parseExamples(raw, ids) {
+  const out = {};
+  if (!raw) return out;
+  let text = String(raw).replace(/```(?:json)?/gi, '').trim();
+  try {
+    const j = JSON.parse(text);
+    if (j && typeof j === 'object' && !Array.isArray(j)) {
+      ids.forEach(k => { if (typeof j[k] === 'string' && j[k].trim()) out[k] = j[k].trim().slice(0, 60); });
+      if (Object.keys(out).length >= 2) return out;
+    }
+  } catch (e) {}
+  text.split(/\r?\n/).forEach(line => {
+    const m = line.match(/["']?([a-zA-Z]{2,12})["']?\s*[:：]\s*["']?(.+?)["']?\s*[,，]?\s*$/);
+    if (m && ids.includes(m[1]) && m[2] && m[2] !== 'null')
+      out[m[1]] = m[2].trim().replace(/^["']|["']$/g, '').slice(0, 60);
+  });
+  return out;
+}
+async function ensureExamples(t, force) {
+  if (!t || (!force && (t.examples || t.examplesTried))) return;
+  const s = DB.settings || {};
+  if (!s.aiKey) return;                       /* 无 Key：保持固定示例，且不标记 tried（日后填了 Key 可补生成） */
+  t.examplesTried = true; save();             /* 有 Key 就记为已尝试，失败也不反复调 AI */
+  const topic = shortPhrase(t.raw || t.title || '', 60);
+  const fieldLines = EXAMPLE_IDS.map(id =>
+    `"${id}": 一条贴合「${topic}」这个主题的示例句（写${EXAMPLE_HINTS[id]}；只示范角度和颗粒度，绝不替用户下结论、不把答案写满；≤28字，口语、具体）`
+  ).join('\n');
+  const sys = '你是青少年思维训练器的示例文案助手。为每个字段写一条简短示例，帮学生明白"这一格该填什么"。硬规则：①示例必须贴合给定主题的具体场景，绝不用与主题无关的套话；②只示范"写什么角度、写到多具体"，绝不替用户把结论、方案、判断写出来——这是思维训练，示例一旦把答案说透就毁了训练；③每条不超过28字，口语、具体、可观察；④只输出一个 JSON 对象，key 用我给的字段名，每行一个，不要解释、不要代码块标记。';
+  const res = await callAI(sys, '主题：' + (t.raw || t.title || '') + '\n\n字段：\n' + fieldLines, 1000);
+  if (!res.ok) return;                        /* 失败：静默保持固定示例 */
+  const parsed = parseExamples(res.text, EXAMPLE_IDS);
+  const got = Object.keys(parsed).length;
+  if (!got) return;
+  /* 没返回的字段沿用旧示例或固定示例，不整批丢弃 */
+  t.examples = Object.assign({}, t.examples || {}, parsed);
+  t.examplesSrc = 'ai'; save();
+  refreshPlaceholder();
+}
+function exampleFor(t, s) {
+  return (t.examples && t.examples[s.id]) || s.ph || '';
+}
+function refreshPlaceholder() {
+  const input = el('step-input'); const t = getCur();
+  if (!input || !t || curStage === null) return;
+  const m = STAGES[curStage]; if (!m) return;
+  const d = ensureFlow(t, m.key);
+  const s = (FLOWS[m.key].steps || [])[d.progress];
+  if (s) input.placeholder = exampleFor(t, s);
+}
+async function regenExamples() {
+  const t = getCur(); if (!t) return;
+  const s = DB.settings || {};
+  if (!s.aiKey) { toast('在右上角 ⚙️ AI 设置里填 Key，才能生成贴合你主题的例子'); return; }
+  const btn = el('ex-regen-btn'); if (btn) { btn.disabled = true; btn.textContent = '正在换…'; }
+  await ensureExamples(t, true);
+  if (btn) { btn.disabled = false; btn.textContent = '↻ 换个贴合我的例子'; }
+}
 
 /* 初始化/补全某环节的对话状态 */
 function ensureFlow(t, key) {
@@ -615,7 +685,10 @@ function currentTurn(i, s, d, t, key) {
     if (s.type === 'template') pre = problemTemplate(t); // 始终用重建后的完整句，修复旧下划线
     const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(t)}</div>` : '';
     const onIn = s.type === 'template' ? ' oninput="updateProblemHero()"' : '';
-    input = `${hero}<textarea id="step-input"${onIn} placeholder="${esc(s.ph || '')}">${esc(pre)}</textarea>
+    const regenLink = (t.examples && t.examples[s.id])
+      ? `<button class="ex-regen" id="ex-regen-btn" onclick="regenExamples()">↻ 换个贴合我的例子</button>` : '';
+    input = `${hero}<textarea id="step-input"${onIn} placeholder="${esc(exampleFor(t, s))}">${esc(pre)}</textarea>
+      ${regenLink}
       <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
   }
   return `<div class="turn current">
@@ -784,7 +857,7 @@ function splitAdvice(text) {
   return (text || '').split(/\n+/).map(x => x.trim()).filter(Boolean).slice(0, 5);
 }
 /* 真正调用用户自带的 Key（OpenAI 兼容协议）。无 Key / 失败返回结构化的失败原因。 */
-async function callAI(system, user) {
+async function callAI(system, user, maxTokens) {
   const s = DB.settings || {};
   if (!s.aiKey) return { ok:false, reason:'nokey' };
   const prov = s.aiProvider || 'deepseek';
@@ -796,7 +869,7 @@ async function callAI(system, user) {
     const r = await fetch(url, {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + s.aiKey },
-      body: JSON.stringify({ model, messages:[{role:'system',content:system},{role:'user',content:user}], temperature:0.7, max_tokens:500 })
+      body: JSON.stringify({ model, messages:[{role:'system',content:system},{role:'user',content:user}], temperature:0.7, max_tokens:maxTokens || 500 })
     });
     if (!r.ok) return { ok:false, reason:'http_' + r.status };
     const j = await r.json();
