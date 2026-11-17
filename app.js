@@ -489,13 +489,19 @@ async function deepenReview() {
 function localReview(r) {
   return `你已经把「${(r.trained[0] || '发现困惑').replace(/^[^：]+：/, '')}」练成了习惯，这是最难的起点。${r.watch[0] || ''}下次就试这一件，不用多。`;
 }
-/* 字段内的每个逗号后也断行，后续行缩进对齐 */
+/* 字段内的每个逗号后断行（仅用于现状/标准/差距/后果四步） */
 function phValue(v) {
   return String(v).split(/[，,]/).map(s => s.trim()).filter(Boolean).join('<br>');
 }
+/* 结论整句连续显示：把收尾标点与前字绑在一起，杜绝「」被甩到下一行 */
+function phText(v) {
+  return esc(String(v || '').trim())
+    .replace(/([\u4e00-\u9fa5a-zA-Z0-9])([」』”"）)\]】])/g, '$1\u2060$2')
+    .replace(/([「『“"（\[【])([\u4e00-\u9fa5a-zA-Z0-9])/g, '$1\u2060$2');
+}
 function problemHeroHTML(t) {
   const p = problemBuild(t);
-  /* 严格格式：每个逗号后换行；标签彩色、放大；结论单独强调 */
+  /* 前四步按逗号断行；结论是一句完整的话，自然换行不拆段 */
   return `<div class="problem-hero">
     <div class="ph-label">你的问题定义</div>
     <div class="ph-line"><span class="ph-k k-now">现状</span><span class="ph-v">${phValue(p.now)}</span></div>
@@ -504,7 +510,7 @@ function problemHeroHTML(t) {
     <div class="ph-line"><span class="ph-k k-cost">导致</span><span class="ph-v">${phValue(p.cost)}</span></div>
     <div class="ph-conclusion">
       <div class="ph-conclusion-k">所以我需要解决的问题是</div>
-      <div class="ph-conclusion-v">${phValue(p.ask)}</div>
+      <div class="ph-conclusion-v">${phText(p.ask)}</div>
     </div>
   </div>`;
 }
@@ -800,24 +806,27 @@ async function callAI(system, user) {
   } catch (e) { return { ok:false, reason:'network_or_cors' }; }
 }
 
-/* ---------- 探索卡标题：AI 把问题概括成 ≤6 字标签，失败本地提炼 ---------- */
+/* ---------- 探索卡标题：AI 把问题概括成 ≤20 字短语，失败本地提炼 ---------- */
 function localTopic(t) {
   const p = problemBuild(t);
-  /* 优先从差距/现状里取最有信息量的一小段，去掉标点与常见修饰 */
-  let s = (p.gap || p.now || p.ask || '').trim();
-  s = s.replace(/[「」『』“”"'，,。.；;：:！!？?、\s]/g, '');
-  s = s.replace(/^(我发现|我发现|关于|就是|其实|现在|目前|问题|这个|一个|感觉|觉得)+/g, '');
-  s = s.slice(0, 6);
-  return s || '这次探索';
+  /* 直接用「差距」当标题——它本身就是最像问题的那一句；逗号改间隔点 */
+  let s = String(p.gap || p.now || '').trim();
+  if (!s) s = String(p.ask || '').replace(/^如何消除「/, '').replace(/」，让「/g, ' · ').replace(/」成为现实/g, '');
+  s = s.replace(/[「」『』“”"'。.；;：:！!？?、\s]+/g, '').replace(/[，,]/g, ' · ');
+  return s.slice(0, 20) || '这次探索';
+}
+/* 旧数据里的 6 字标签直接降级为本地完整短语，不等 AI */
+function displayTopic(t) {
+  return (t.topic && String(t.topic).length > 6) ? t.topic : localTopic(t);
 }
 async function ensureTopic(t) {
-  /* 已有标签就不再生成，避免每次进入都调用 */
-  if (t.topic) return;
+  /* 旧版 ≤6 字标签表述不清，自动升级为完整短语；新版不重复调用 */
+  if (t.topic && String(t.topic).length > 6) return;
   const p = problemBuild(t);
-  const res = await callAI('你是中文标题助手。把下面的问题概括成一个不超过6个字的中文短语（只要名词短语，不要标点、不要引号、不要解释）。例如："课间大家低头玩手机不愿交流"→"课间无交流"。只输出这个短语。', '问题：' + p.ask + '\n差距：' + p.gap + '\n现状：' + p.now);
+  const res = await callAI('你是中文标题助手。把下面的问题概括成一个不超过20字的中文短语，要让人一眼看出「谁 + 什么状况」，保留关键信息，不要引号、不要解释。例如："课间大家低头玩手机不愿交流"→"课间学生低头玩手机不愿交流"。只输出这个短语。', '问题：' + p.ask + '\n差距：' + p.gap + '\n现状：' + p.now);
   let topic;
   if (res.ok) {
-    topic = res.text.replace(/[「」『』“”"'，,。.；;：:！!？?、\s]/g, '').slice(0, 6);
+    topic = res.text.replace(/[「」『』“”"'，,。.；;：:！!？?、\s]/g, '').slice(0, 20);
   }
   if (!topic) topic = localTopic(t);
   t.topic = topic; save();
@@ -899,7 +908,7 @@ function finishCardHTML(t) {
   return `<div class="finish-card">
     <div class="finish-emoji">🎉</div>
     <div class="finish-title">这一趟，走完了</div>
-    <div class="finish-text">我把「<span id="card-topic">${esc(t.topic || localTopic(t))}</span>」这个问题，从一句纳闷走到了亲手验证。值得留一张卡。</div>
+    <div class="finish-text">从「<span id="card-topic">${esc(displayTopic(t))}</span>」到亲手验证，这一趟值得留一张卡。</div>
     <button class="btn finish-btn" onclick="exportCard('${t.id}',true)">📥 生成我的探索卡</button>
     <button class="finish-revisit" onclick="reopenForEdit()">✎ 回去再改改</button>
     <div class="finish-foot">不打卡，不排名——这张卡，只属于你自己。</div>
@@ -1023,13 +1032,18 @@ function drawCard(t) {
   const ctx = c.getContext('2d');
   const F = (size, weight) => `${weight || 400} ${size}px ${fam}`;
 
+  /* 收尾标点不能落在行首：放不下时把前一个字一起挪到下一行 */
+  const NO_START = /[」』”"】）\]，,。.、；;：:！!？?]/;
   function wrap(text, maxW, font) {
     ctx.font = font; const out = []; let cur = '';
     for (const ch of String(text == null ? '' : text)) {
       if (ch === '\n') { if (cur) out.push(cur); cur = ''; continue; }
       const test = cur + ch;
-      if (ctx.measureText(test).width > maxW && cur) { out.push(cur); cur = ch; }
-      else cur = test;
+      if (ctx.measureText(test).width > maxW && cur) {
+        if (NO_START.test(ch) && cur.length > 1) {
+          out.push(cur.slice(0, -1)); cur = cur.slice(-1) + ch;
+        } else { out.push(cur); cur = ch; }
+      } else cur = test;
     }
     if (cur) out.push(cur);
     return out;
@@ -1044,6 +1058,17 @@ function drawCard(t) {
     lines[maxLines - 1] = last + '…';
     return lines;
   }
+
+  /* 标题即问题本身：短句保持大字，长句最多两行；「新探索」下沉到时间行，不再吃掉标题空间 */
+  const topicText = displayTopic(t).slice(0, 24);
+  const HEAD_W = W - PAD * 2;
+  let ts = 46, titleLines = wrap(topicText, HEAD_W, F(46, 800));
+  while (titleLines.length > 2 && ts > 30) { ts -= 2; titleLines = wrap(topicText, HEAD_W, F(ts, 800)); }
+  if (titleLines.length > 2) titleLines = cap(topicText, 2, HEAD_W, F(ts, 800));
+  const TITLE_TOP = 68, LINE_H = ts + 6;
+  const STAMP_Y = TITLE_TOP + titleLines.length * LINE_H + 10;
+  const STEPS_Y = STAMP_Y + 38;
+  const HEAD_H = STEPS_Y + 34 + 16;
 
   const d = t.stageData || {}, da = (d.define || {}).answers || {}, ca = (d.collab || {}).answers || {}, va = (d.verify || {}).answers || {}, vd = d.verify || {};
   const p = problemBuild(t), rv = threadReview(t);
@@ -1066,10 +1091,10 @@ function drawCard(t) {
     const label = segItem[0], val = segItem[1], col = segItem[2], isAsk = label.indexOf('解决的问题') >= 0;
     /* 标签行 */
     probRows.push({ kind:'label', t:label, color:col, size:isAsk ? 18 : 17 });
-    /* 答案行：占满卡内宽度换行，不再从标签后起笔 */
-    const parts = String(val || '').split(/[，,]/).map(x => x.trim()).filter(Boolean);
+    /* 前四步按逗号断行；结论整句连续换行，不再拆成碎片 */
+    const parts = isAsk ? [String(val || '')] : String(val || '').split(/[，,]/).map(x => x.trim()).filter(Boolean);
     (parts.length ? parts : ['—']).forEach((part) => {
-      cap(part, 4, TXT_W, F(isAsk ? 24 : 23, isAsk ? 800 : 600)).forEach(line => {
+      cap(part, isAsk ? 5 : 4, TXT_W, F(isAsk ? 24 : 23, isAsk ? 800 : 600)).forEach(line => {
         probRows.push({ kind:'val', t:line, size:isAsk ? 24 : 23, weight:isAsk ? 800 : 600, color:isAsk ? CORAL : INK });
       });
     });
@@ -1102,7 +1127,7 @@ function drawCard(t) {
   cards.push({ emoji: '💪', kicker: '这一趟，我练到了', accent: GREEN, rows: gRows });
 
   /* 测量高度 */
-  let y = 250 + 30;
+  let y = HEAD_H + 30;
   cards.forEach(card => {
     const lineH = card.rows.reduce((h, r) => h + (r.kind === 'label' ? 32 : 36), 0);
     card.h = 66 + lineH + 14;
@@ -1117,37 +1142,34 @@ function drawCard(t) {
   ctx.fillStyle = '#F4F7F5'; ctx.fillRect(0, 0, W, totalH);
 
   /* 顶部品牌区（渐变 + 装饰） */
-  const gh = ctx.createLinearGradient(0, 0, W, 250);
+  const gh = ctx.createLinearGradient(0, 0, W, HEAD_H);
   gh.addColorStop(0, GREEN); gh.addColorStop(1, '#0A5741');
-  ctx.fillStyle = gh; ctx.fillRect(0, 0, W, 250);
+  ctx.fillStyle = gh; ctx.fillRect(0, 0, W, HEAD_H);
   ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.arc(W - 30, 20, 150, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.arc(W - 170, 230, 96, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.arc(W - 170, HEAD_H - 20, 96, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,.28)';
   for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(W - 72 - i * 26, 92, 4, 0, Math.PI * 2); ctx.fill(); }
   ctx.textBaseline = 'top';
   ctx.font = F(20, 700); ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.fillText('探奇 · MIND GYM', PAD, 32);
-  /* 标题：我对「XX」问题的新探索，XX≤6字；动态缩字号确保一行显示完 */
-  const topic = (t.topic || localTopic(t)).slice(0, 6);
-  const title = `我对「${topic}」问题的新探索`;
-  let ts = 42;
-  ctx.font = F(ts, 800);
-  while (ctx.measureText(title).width > W - PAD * 2 && ts > 24) { ts -= 2; ctx.font = F(ts, 800); }
-  ctx.fillStyle = '#fff'; ctx.fillText(title, PAD, 76);
+  /* 标题即问题本身：短句大字，长句最多两行；「新探索」下沉到时间行 */
+  ctx.font = F(ts, 800); ctx.fillStyle = '#fff';
+  titleLines.forEach((line, i) => ctx.fillText(line, PAD, TITLE_TOP + i * LINE_H));
   const stamp = new Date(t.finishedAt || t.updatedAt || Date.now()).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  ctx.font = F(19, 400); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText('记录于 ' + stamp, PAD, 152);
+  ctx.font = F(19, 400); ctx.fillStyle = 'rgba(255,255,255,.75)';
+  ctx.fillText('我的新探索 · 记录于 ' + stamp, PAD, STAMP_Y);
   const steps = ['捕捉', '定义', '协作', '验证', '进阶'];
   let sx = PAD;
   steps.forEach((s, i) => {
     ctx.font = F(18, 700);
     const tw = ctx.measureText(s).width + 28;
     ctx.fillStyle = i === 4 ? CORAL : 'rgba(255,255,255,.22)';
-    roundRect(ctx, sx, 196, tw, 34, 17); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.fillText(s, sx + 14, 203);
+    roundRect(ctx, sx, STEPS_Y, tw, 34, 17); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(s, sx + 14, STEPS_Y + 7);
     sx += tw + 10;
   });
 
   /* 内容卡 */
-  y = 250 + 30;
+  y = HEAD_H + 30;
   cards.forEach(card => {
     const bx = PAD - 12, bw = W - (PAD - 12) * 2;
     ctx.fillStyle = '#fff'; roundRect(ctx, bx, y, bw, card.h, 20); ctx.fill();

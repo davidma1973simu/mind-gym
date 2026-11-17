@@ -208,7 +208,7 @@ body{margin:0;background:#dfe6e3;font-family:"PingFang SC","Hiragino Sans GB","M
 /* 结论：标签独占一行，答案另起一行占满宽度，避免被挤成竖排 */
 .problem-hero .ph-conclusion{border-top:2px dashed var(--line);padding-top:12px;margin-top:12px;margin-bottom:0;}
 .problem-hero .ph-conclusion-k{font-size:13px;font-weight:800;color:var(--green);margin-bottom:6px;}
-.problem-hero .ph-conclusion-v{font-size:19px;font-weight:800;color:var(--coral);line-height:1.55;word-break:break-word;white-space:normal;}
+.problem-hero .ph-conclusion-v{font-size:19px;font-weight:800;color:var(--coral);line-height:1.55;word-break:break-word;white-space:normal;text-wrap:pretty;}
 .turn.done .problem-hero{opacity:1;background:#fff;border-color:var(--green-soft);box-shadow:none;}
 
 /* 随时收尾出口：弱化，不抢主按钮 */
