@@ -7,21 +7,73 @@ let curStage = null;           // 当前阶段指针（2~5）
 let foldOpen = false;          // 首页“我的探索”折叠状态（默认收起）
 let aboutIdx = 0;              // 首页 About 轮播当前索引
 let aboutTimer = null;         // 自动轮播定时器
-/* About 轮播：4 张，目的/价值/流程/姿态。文案面向 AI-native 青少年：短句、同盟者口吻、不上纲上线。 */
+let poolTab = 'mine';          // 探索页当前标签：mine / topics
+let answeredOpen = false;      // 阶段页已答回合是否展开（默认收起，降认知负荷）
+/* 描边图标：界面内统一用 SVG，替代 emoji，克制不花哨 */
+const ICON_PATHS = {
+  spark:'<path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/>',
+  bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  compass:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.2 5-5 2.2 2.2-5z"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M17 6l2 2M14 9l2 2"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+  flask:'<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7 15h10"/>',
+  hands:'<path d="M8 13V5a1.5 1.5 0 0 1 3 0v6M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V6a1.5 1.5 0 0 1 3 0v8"/><path d="M8 13l-2.5-2a1.6 1.6 0 0 0-2 2.4l4.5 5.6a7 7 0 0 0 5.4 2.5h1.2a6 6 0 0 0 6-6V14a1.5 1.5 0 0 0-3 0"/>',
+  trend:'<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  trophy:'<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3M10 14v3M14 14v3M8 20h8"/>',
+  check:'<path d="M5 12l4 4L19 6"/>',
+  drop:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  down:'<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+  up:'<path d="M12 21V9M7 14l5-5 5 5M4 3h16"/>',
+  trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'
+};
+function svgIcon(name, size) {
+  size = size || 20;
+  const p = ICON_PATHS[name] || ICON_PATHS.spark;
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+}
+/* About 轮播：4 张，目的/价值/流程/姿态。文案面向 AI-native 青少年：短句、同盟者口吻。 */
 const ABOUT_SLIDES = [
-  { kicker: '为什么 · WHY', emoji: '🧠',
+  { kicker: '为什么 · WHY', icon: 'spark',
     title: '答案越来越好找，', title2: '会问问题才是超能力。',
-    body: 'AI 能秒回，但“到底哪里不对劲、该验证什么”得你自己长出来。探奇就是练这块肌肉的。' },
-  { kicker: '练什么 · VALUE', emoji: '⚡',
+    body: 'AI 能秒回，但"到底哪里不对劲、该验证什么"得你自己长出来。探奇就是练这块肌肉的。' },
+  { kicker: '练什么 · VALUE', icon: 'bolt',
     title: '四件 AI 替不了的事。', title2: '',
     body: '发现 → 定义 → 验证 → 校准判断。每周练一点点，看得见自己变强。' },
-  { kicker: '怎么走 · FLOW', emoji: '🧭',
+  { kicker: '怎么走 · FLOW', icon: 'compass',
     title: '5 步，一个小疑问走到底。', title2: '',
     body: '随手捕捉 → 挑值得的 → 写下你的判断 → 做点什么验证 → 下次更顺。不打卡，不排名。' },
-  { kicker: '谁做主 · YOURS', emoji: '🔑',
+  { kicker: '谁做主 · YOURS', icon: 'key',
     title: '你的判断，先到。', title2: '',
     body: '先看 AI 再下结论，容易被带着跑。这里永远是你先想、AI 后帮。你的 Key、你的数据，只在这台设备。' }
 ];
+/* 话题墙：精选示例话题（非实时），贴近大中学生真实生活，点击即可据为己有 */
+const TOPICS = [
+  { q:'同样的东西，为什么网上比楼下便宜？', tag:'消费', color:'mint' },
+  { q:'为什么越想早睡，反而越睡不着？', tag:'习惯', color:'lav' },
+  { q:'大家都在用的学习方法，真的适合我吗？', tag:'学习', color:'sky' },
+  { q:'外卖为什么越点越贵？', tag:'消费', color:'cream' },
+  { q:'为什么刷短视频，一抬头就一小时？', tag:'习惯', color:'rose' },
+  { q:'努力了，成绩为什么没涨？', tag:'学习', color:'mint' },
+  { q:'为什么有些广告，一看就想买？', tag:'心理', color:'lav' },
+  { q:'班级里的"默认规则"，是谁定的？', tag:'社会', color:'sky' },
+  { q:'排队时，为什么总觉得别的队更快？', tag:'心理', color:'cream' },
+  { q:'AI 写的作业，老师是怎么看出来的？', tag:'科技', color:'mint' }
+];
+const TOPIC_COLORS = { mint:'var(--mint)',lav:'var(--lav)',sky:'var(--sky)',cream:'var(--cream)',rose:'var(--rose)' };
+/* 答完一步的即时反馈（轻量肯定，不喧闹） */
+const STEP_KUDOS = {
+  now:'现状抓到了，接着看"本来该怎样"', std:'标准有了，差距就清楚了',
+  gap:'差距锁定了，看它造成什么后果', cost:'后果具体了，可以归纳问题了',
+  problem:'问题定义好了，这是最关键的一步', direction:'你的判断先到了，很好',
+  reason:'理由写清了，看看 AI 怎么说', solution:'方案定了，下一步去验证它',
+  test:'动手做了，这就是进步', result:'真实结果记下了',
+  verdict:'判断做了，回头看看依据', revision:'修订完成，这就是校准',
+  note:'记下了，下次就试这一点'
+};
 
 function load() {
   try {
@@ -40,7 +92,7 @@ function go(id, btn) {
   else if (id === 's-mine') { setNav('s-mine'); }
   if (id !== 's-home') clearInterval(aboutTimer);
   if (id === 's-home') { renderHomeThreads(); if (DB.user.ageConfirmed) restartAbout(); }
-  if (id === 's-pool') renderPool();
+  if (id === 's-pool') { renderPool(); renderTopics(); }
   if (id === 's-mine') renderMine();
   updateFab();
   updateAiBtn();
@@ -58,13 +110,12 @@ function updateFab() {
   const triageVisible = el('triage-entry') && el('triage-entry').classList.contains('show');
   fab.style.display = (homeActive && !triageVisible) ? 'flex' : 'none';
 }
-/* 首页右上角 AI 设置按钮：仅首页显示，连好 Key 后显示 ✓ */
+/* 首页 AI 设置按钮：连接状态用一个小圆点表示，不再覆盖 SVG 图标 */
 function updateAiBtn() {
   const btn = el('ai-set-btn'); if (!btn) return;
-  const homeActive = el('s-home').classList.contains('active');
   const hasKey = !!(DB.settings && DB.settings.aiKey);
-  btn.classList.toggle('show', homeActive);
-  btn.innerHTML = hasKey ? '⚙️ AI ✓' : '⚙️ AI 设置';
+  const dot = el('ai-dot'); if (dot) dot.classList.toggle('on', hasKey);
+  btn.setAttribute('aria-label', hasKey ? 'AI 已连接，点开管理' : 'AI 设置');
 }
 
 /* ---------- AI 设置（用户自带 Key，本地存储） ---------- */
@@ -100,7 +151,7 @@ function saveAiSettings() {
   save();
   renderAiStatus();
   updateAiBtn();
-  toast('已保存 🔐');
+  toast('已保存');
   setTimeout(closeSettings, 700);
 }
 function renderAiStatus() {
@@ -108,9 +159,9 @@ function renderAiStatus() {
   const note = el('ai-status-note');
   if (s.aiKey) {
     const names = { deepseek: 'DeepSeek', openai: 'OpenAI', custom: '自定义' };
-    note.innerHTML = `✅ 已连接：${names[s.aiProvider] || '自定义'} · Key 已保存在本地`;
+    note.innerHTML = `已连接：${names[s.aiProvider] || '自定义'} · Key 只保存在这台设备`;
   } else {
-    note.innerHTML = '⚠️ 尚未设置 API Key';
+    note.innerHTML = '尚未设置 API Key';
   }
 }
 function goHome() { go('s-home'); }
@@ -159,6 +210,7 @@ function addThread(raw, media) {
   DB.threads.unshift(t); save();
   showFeedback(t); renderHomeThreads();
   ensureExamples(t);   /* 捕捉后一次性生成全部阶段的主题示例（无 Key/失败自动跳过） */
+  ensureSpark(t);      /* 捕捉后的“发光时刻”：一句贴合主题的肯定 + 一个刁钻追问 */
   return t;
 }
 function submitHome() {
@@ -166,18 +218,55 @@ function submitHome() {
   if (!v) { toast('先写点什么吧'); return; }
   addThread(v, null);
   el('home-input').value = '';
-  toast('已记下 ✅');
+  toast('已记下');
 }
 function showFeedback(t) {
   const fb = el('home-feedback');
+  const spark = t.spark || null;
   fb.innerHTML = `<div class="fb-card">
-    <div class="fb-ok">已记下 ✅</div>
+    <div class="fb-kicker">已捕捉 · 一个小疑问收好了</div>
     <div class="fb-text">${esc(t.raw)}</div>
+    <div id="spark-slot">${sparkHTML(spark)}</div>
     <div class="fb-actions">
       <button class="fb-go" onclick="go('s-pool')">放进探索池看看 →</button>
       <button class="fb-more" onclick="moreCapture()">再记一条</button>
     </div></div>`;
   fb.classList.add('show');
+}
+function sparkHTML(spark) {
+  if (!spark) return `<div class="fb-spark"><div class="sp-row" style="color:var(--muted)">正在想一个追问给你…</div></div>`;
+  return `<div class="fb-spark">
+    <div class="sp-row"><b>你抓到了：</b>${esc(spark.praise)}</div>
+    <div class="sp-row"><b>想想看：</b>${esc(spark.probe)}</div>
+  </div>`;
+}
+/* 发光时刻：AI 有 Key 就定制一句肯定 + 一个刁钻追问；失败/无 Key 用本地模板，绝不空着 */
+async function ensureSpark(t) {
+  if (!t || t.spark) return;
+  const topic = shortPhrase(t.raw || t.title || '', 60);
+  const s = DB.settings || {};
+  let spark = null;
+  if (s.aiKey) {
+    const sys = '你是青少年思维教练。学生刚记下一个生活里的疑问。写两句中文：第一句肯定他抓到的东西为什么值得探（具体、不空夸，≤24字）；第二句抛一个能逼他往下想的刁钻追问（≤30字）。只输出两行，第一行以"赞："开头，第二行以"问："开头，不要别的。';
+    const res = await callAI(sys, '我记下的疑问：' + topic, 200);
+    if (res.ok) {
+      const lines = res.text.split(/\n+/).map(x => x.trim()).filter(Boolean);
+      const praise = (lines.find(x => /^赞[:：]/.test(x)) || lines[0] || '').replace(/^赞[:：]\s*/, '');
+      const probe = (lines.find(x => /^问[:：]/.test(x)) || lines[1] || '').replace(/^问[:：]\s*/, '');
+      if (praise && probe) spark = { praise: praise.slice(0, 40), probe: probe.slice(0, 48), src: 'ai' };
+    }
+  }
+  if (!spark) spark = localSpark(topic);
+  t.spark = spark; save();
+  const slot = el('spark-slot'); if (slot) slot.innerHTML = sparkHTML(spark);
+}
+function localSpark(topic) {
+  const t = String(topic || '');
+  return {
+    praise: '这条疑问藏着一个可以被验证的"为什么"，值得较真。',
+    probe: /为什么|为何/.test(t) ? '如果反过来想，答案还成立吗？' : '如果它只发生一次，还算问题吗？',
+    src: 'local'
+  };
 }
 function moreCapture() {
   el('home-feedback').classList.remove('show');
@@ -189,29 +278,58 @@ function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': 
 function openSheet() { el('sheet-mask').classList.add('active'); el('cap-sheet').classList.add('active'); }
 function closeSheet() { el('sheet-mask').classList.remove('active'); el('cap-sheet').classList.remove('active'); }
 function pickSource(type) {
+  if (type === 'write') { closeSheet(); el('home-input').focus(); return; }
+  if (type === 'link') {
+    const row = el('link-row'); if (row) { row.style.display = 'flex'; }
+    const li = el('link-input'); if (li) li.focus();
+    return;
+  }
   closeSheet();
-  if (type === 'write') { el('home-input').focus(); return; }
   if (type === 'voice') {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) {
       try {
         const r = new SR(); r.lang = 'zh-CN'; r.interimResults = false;
-        r.onresult = e => { addThread('🎙️ ' + e.results[0][0].transcript, 'voice'); toast('语音已记下 ✅'); };
-        r.onerror = () => { addThread('🎙️ 语音线索（真实转写待 M2）', 'voice'); toast('语音已记下（示意）'); };
-        r.start(); return;
+        r.onresult = e => { const text = e.results[0][0].transcript; if (text.trim()) addThread(text.trim(), { type:'voice' }); else toast('没听清，再试一次'); };
+        r.onerror = () => toast('语音没听清，改用写下来吧');
+        r.start(); toast('在听，说说你纳闷什么…'); return;
       } catch (e) {}
     }
-    addThread('🎙️ 语音线索（真实转写待 M2）', 'voice'); toast('语音已记下（示意）');
+    toast('这台设备不支持语音，用写下来吧'); el('home-input').focus();
   } else if (type === 'photo') {
     el('photo-input').click();
-  } else if (type === 'link') {
-    const url = prompt('贴一个链接：');
-    if (url && url.trim()) addThread('🔗 ' + url.trim(), 'link');
   }
+}
+function submitLink() {
+  const li = el('link-input'); const v = li ? li.value.trim() : '';
+  if (!v) { toast('先贴一个链接'); return; }
+  let url = v;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  addThread(url, { type:'link', url });
+  li.value = ''; const row = el('link-row'); if (row) row.style.display = 'none';
+  closeSheet();
 }
 function onPhotoChosen(e) {
   const f = e.target.files && e.target.files[0];
-  if (f) { addThread('📷 已拍一张照片（M1 示意）', 'photo'); toast('照片已记下 ✅'); }
+  if (f) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        /* 压成缩略图 dataURL 存本地，避免撑爆 localStorage */
+        const maxW = 480, scale = Math.min(1, maxW / img.width);
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+        const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, cv.width, cv.height);
+        const data = cv.toDataURL('image/jpeg', 0.7);
+        addThread('📷 我拍下的一个发现', { type:'photo', data });
+        toast('照片已记下');
+      };
+      img.onerror = () => { addThread('📷 我拍下的一个发现', { type:'photo' }); toast('照片已记下'); };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  }
   e.target.value = '';
 }
 
@@ -238,7 +356,7 @@ function renderAbout() {
   box.innerHTML = `
     <button class="ab-close" title="收起介绍" onclick="event.stopPropagation();closeAbout()">×</button>
     <div class="ab-kicker">${s.kicker}</div>
-    <div class="ab-emoji">${s.emoji}</div>
+    <div class="ab-emoji">${svgIcon(s.icon, 24)}</div>
     <div class="ab-title">${s.title}${s.title2 ? `<br>${s.title2}` : ''}</div>
     <div class="ab-body">${s.body}</div>
     <div class="ab-foot">
@@ -258,7 +376,7 @@ function reopenAbout() {
   DB.user.aboutClosed = false; save();
   aboutIdx = 0; renderAbout(); restartAbout();
   go('s-home');
-  toast('介绍已重新显示 🌿');
+  toast('介绍已重新显示');
 }
 
 function toggleFold() {
@@ -277,18 +395,22 @@ function renderHomeThreads() {
   updateFab();
   if (!DB.threads.length) { list.innerHTML = ''; return; }
   list.innerHTML = DB.threads.map(t => {
-    const emoji = t.sourceMode === 'active' ? '🔆' : '🌧️';
+    const ico = t.sourceMode === 'active'
+      ? `<div class="tri-ico active">${svgIcon('compass',20)}</div>`
+      : (t.media && t.media.type === 'photo' && t.media.data
+          ? `<div class="tri-ico" style="padding:0;overflow:hidden"><img src="${t.media.data}" style="width:100%;height:100%;object-fit:cover;"></div>`
+          : `<div class="tri-ico">${svgIcon('drop',20)}</div>`);
     const sub = `${statusText(t.status)} · ${new Date(t.updatedAt).toLocaleDateString('zh-CN')}`;
     return `<div class="tri-card" onclick="openThread('${t.id}')">
-      <div class="tri-emoji">${emoji}</div>
+      ${ico}
       <div class="tri-main">
         <div class="tri-title">${esc(t.title || t.raw)}</div>
         <div class="tri-sub">${sub}</div>
         ${railHTML(t)}
       </div>
       <div class="status-chip ${statusClass(t.status)}">${statusText(t.status)}</div>
-      ${t.status === 'done' ? `<button class="dl-btn" title="下载探索卡" onclick="event.stopPropagation();exportCard('${t.id}')">📥</button>` : ''}
-      <button class="del-btn" title="删除这条探索" onclick="event.stopPropagation();deleteThread('${t.id}')">🗑️</button>
+      ${t.status === 'done' ? `<button class="dl-btn" title="下载探索卡" onclick="event.stopPropagation();exportCard('${t.id}')">${svgIcon('down',17)}</button>` : ''}
+      <button class="del-btn" title="删除这条探索" onclick="event.stopPropagation();deleteThread('${t.id}')">${svgIcon('trash',16)}</button>
     </div>`;
   }).join('');
 }
@@ -298,24 +420,55 @@ function renderPool() {
   const pool = el('pool-list');
   const items = DB.threads.filter(t => t.status === 'captured');
   if (!items.length) {
-    pool.innerHTML = '<div class="pool-empty">都整理完啦 🌿<br>去首页记点新探索吧</div>';
+    pool.innerHTML = '<div class="pool-empty">都整理完啦<br>去首页记点新探索吧</div>';
     return;
   }
   pool.innerHTML = items.map(t => {
-    const emoji = t.sourceMode === 'active' ? '🔆' : '🌧️';
+    const ico = t.sourceMode === 'active'
+      ? `<div class="tri-ico active">${svgIcon('compass',20)}</div>`
+      : (t.media && t.media.type === 'photo' && t.media.data
+          ? `<div class="tri-ico" style="padding:0;overflow:hidden"><img src="${t.media.data}" style="width:100%;height:100%;object-fit:cover;"></div>`
+          : `<div class="tri-ico">${svgIcon('drop',20)}</div>`);
     return `<div class="tri-card" style="display:block;">
       <div style="display:flex;gap:10px;align-items:flex-start;">
-        <div class="tri-emoji">${emoji}</div>
+        ${ico}
         <div class="tri-main"><div class="tri-title">${esc(t.title || t.raw)}</div></div>
-        <button class="del-btn" title="删除这条探索" onclick="deleteThread('${t.id}')">🗑️</button>
+        <button class="del-btn" title="删除这条探索" onclick="deleteThread('${t.id}')">${svgIcon('trash',16)}</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="next-btn" style="margin:0;" onclick="triage('${t.id}','push')">推进 ➡️</button>
-        <button class="next-btn" style="margin:0;background:#b9c2bd;" onclick="triage('${t.id}','drop')">放弃</button>
+        <button class="next-btn" style="margin:0;" onclick="triage('${t.id}','push')">推进 →</button>
+        <button class="next-btn" style="margin:0;background:#B7C2BB;" onclick="triage('${t.id}','drop')">放弃</button>
         <button class="next-btn coral" style="margin:0;" onclick="triage('${t.id}','archive')">归档</button>
       </div>
     </div>`;
   }).join('');
+}
+/* ---------- 话题墙 ---------- */
+function setPoolTab(tab) {
+  poolTab = tab;
+  const mine = el('pool-mine'), topics = el('pool-topics');
+  const sm = el('seg-mine'), st = el('seg-topics');
+  if (mine) mine.style.display = tab === 'mine' ? '' : 'none';
+  if (topics) topics.style.display = tab === 'topics' ? '' : 'none';
+  if (sm) sm.classList.toggle('on', tab === 'mine');
+  if (st) st.classList.toggle('on', tab === 'topics');
+}
+function renderTopics() {
+  const box = el('topic-list'); if (!box) return;
+  box.innerHTML = TOPICS.map((tp, i) => `
+    <div class="topic-card">
+      <div class="topic-top">
+        <span class="topic-tag" style="background:${TOPIC_COLORS[tp.color] || 'var(--mint)'};color:#3a4a42;">${esc(tp.tag)}</span>
+      </div>
+      <div class="topic-q">${esc(tp.q)}</div>
+      <div class="topic-actions"><button onclick="tryTopic(${i})">我也想探 →</button></div>
+    </div>`).join('');
+}
+function tryTopic(i) {
+  const tp = TOPICS[i]; if (!tp) return;
+  go('s-home');
+  const input = el('home-input'); if (input) { input.value = tp.q; input.focus(); }
+  toast('放进输入框了，改改就能记下');
 }
 /* 彻底删除一条探索（不可逆，需二次确认）。状态类的“放弃/归档”仍走 triage。 */
 function deleteThread(id) {
@@ -327,7 +480,7 @@ function deleteThread(id) {
   renderHomeThreads();
   if (el('s-pool').classList.contains('active')) renderPool();
   if (el('s-mine').classList.contains('active')) renderMine();
-  toast('已删除 🗑️');
+  toast('已删除');
 }
 function triage(id, act) {
   const t = DB.threads.find(x => x.id === id); if (!t) return;
@@ -452,7 +605,7 @@ function refreshPlaceholder() {
 async function regenExamples() {
   const t = getCur(); if (!t) return;
   const s = DB.settings || {};
-  if (!s.aiKey) { toast('在右上角 ⚙️ AI 设置里填 Key，才能生成贴合你主题的例子'); return; }
+  if (!s.aiKey) { toast('在右上角 AI 设置里填 Key，才能生成贴合你主题的例子'); return; }
   const btn = el('ex-regen-btn'); if (btn) { btn.disabled = true; btn.textContent = '正在换…'; }
   await ensureExamples(t, true);
   if (btn) { btn.disabled = false; btn.textContent = '↻ 换个贴合我的例子'; }
@@ -480,10 +633,10 @@ async function ensureProblemAI(t, force) {
 async function regenProblemAI() {
   const t = getCur(); if (!t) return;
   const s = DB.settings || {};
-  if (!s.aiKey) { toast('在右上角 ⚙️ AI 设置里填 Key，才能让 AI 归纳问题'); return; }
+  if (!s.aiKey) { toast('在右上角 AI 设置里填 Key，才能让 AI 归纳问题'); return; }
   const btn = el('problem-ai-btn'); if (btn) { btn.disabled = true; btn.textContent = 'AI 归纳中…'; }
   await ensureProblemAI(t, true);
-  if (btn) { btn.disabled = false; btn.textContent = '✨ 让 AI 归纳得更准'; }
+  if (btn) { btn.disabled = false; btn.textContent = '让 AI 归纳得更准'; }
 }
 
 /* 初始化/补全某环节的对话状态 */
@@ -571,7 +724,7 @@ function reviewHTML(t) {
   const ai = im.aiReview
     ? `<div class="rv-ai"><div class="rv-ai-src">${esc(im.aiReviewSource || 'AI 深化')}</div><div class="rv-ai-text">${esc(im.aiReview)}</div></div>`
     : '';
-  const aiBtn = `<button class="btn-mini" id="rv-ai-btn" onclick="deepenReview()">✨ 让 AI 点评这一趟</button>`;
+  const aiBtn = `<button class="btn-mini" id="rv-ai-btn" onclick="deepenReview()">让 AI 点评这一趟</button>`;
   return `<div class="review-card">
     <div class="rv-head"><span class="rv-badge">这一趟，你练到了</span>${aiBtn}</div>
     <div class="rv-block">${r.trained.map(x => `<div class="rv-row"><b>✓</b>${esc(x)}</div>`).join('')}</div>
@@ -583,7 +736,7 @@ function reviewHTML(t) {
 async function deepenReview() {
   const t = getCur(); if (!t) return;
   const s = DB.settings || {};
-  if (!s.aiKey) { toast('在首页右上角 ⚙️ AI 设置里填 Key，可让 AI 点评'); return; }
+  if (!s.aiKey) { toast('在首页右上角 AI 设置里填 Key，可让 AI 点评'); return; }
   const r = threadReview(t);
   const btn = el('rv-ai-btn'); if (btn) { btn.disabled = true; btn.textContent = 'AI 正在点评…'; }
   const ctx = `捕捉：${(t.raw || '').slice(0, 80)}\n练到的能力：${r.trained.join('；')}\n下次留意：${r.watch.join('；')}`;
@@ -640,22 +793,37 @@ function renderStage() {
   let body = `<div class="stage-why">${m.why}<button class="help-pill" onclick="toggleHelp()">?</button></div>
     <div class="help-sheet" id="help-sheet">${esc(flow.intro)}</div>`;
   body += stepperHTML(curStage);
+  /* 步内进度条：让"还差几问"一眼可见 */
+  const stepTotal = flow.steps.length;
+  const stepNow = Math.min(d.progress + 1, stepTotal);
+  const pct = Math.round(d.progress / stepTotal * 100);
+  body += `<div class="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <span class="progress-txt">${Math.min(d.progress, stepTotal)}/${stepTotal}</span>
+  </div>`;
   body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div></div>`;
   /* 进阶屏：先给真实成长反馈，再让用户写一个改进点；走完显示完成卡 */
   if (key === 'improve') {
     body += `<div id="review-slot">${reviewHTML(t)}</div>`;
     if (t.status === 'done') body += finishCardHTML(t);
   }
-  body += `<div class="dlg" id="dlg">`;
-  flow.steps.forEach((s, i) => {
-    const ans = d.answers[s.id];
-    const isCurrent = i === d.progress;
-    if (ans && !isCurrent) {
-      body += answeredTurn(i, s, ans, key);
-    } else if (isCurrent) {
-      body += currentTurn(i, s, d, t, key);
+  /* 已答回合默认收起为一行摘要，点开才展开——把注意力留给"现在这一问" */
+  const answered = flow.steps.map((s, i) => ({ s, i, ans: d.answers[s.id] }))
+    .filter(x => x.ans && x.i !== d.progress);
+  if (answered.length) {
+    if (answeredOpen) {
+      answered.forEach(x => { body += answeredTurn(x.i, x.s, x.ans, key); });
+      body += `<button class="skip-link" style="display:block;margin:0 auto 12px;" onclick="toggleAnswered()">收起上面的记录 ↑</button>`;
+    } else {
+      const dots = answered.map(x => `<span class="ans-dot" title="${esc(x.s.label)}"></span>`).join('');
+      body += `<button class="answered-fold" onclick="toggleAnswered()">
+        <span>${answered.length} 步已记下 · 点开回看/修改</span><span class="ans-dots">${dots}</span>
+      </button>`;
     }
-  });
+  }
+  body += `<div class="dlg" id="dlg">`;
+  const curStep = flow.steps[d.progress];
+  if (curStep) body += currentTurn(d.progress, curStep, d, t, key);
   body += `</div>`;
   /* 风险与来源：协作阶段标记，验证阶段补来源（合规硬要求） */
   if (key === 'collab' || key === 'verify') {
@@ -669,15 +837,15 @@ function renderStage() {
   const exitBar = `<div class="exit-bar">
     <span>想清楚了就可以停，不必每条都走完</span>
     <div class="exit-btns">
-      <button class="exit-btn" onclick="finishThread('archived')">📦 先存着</button>
-      <button class="exit-btn" onclick="finishThread('dropped')">🚫 放下</button>
+      <button class="exit-btn" onclick="finishThread('archived')">先存着</button>
+      <button class="exit-btn" onclick="finishThread('dropped')">放下</button>
     </div>
   </div>`;
   if (t.status === 'done') {
     /* 已完成：保留回退修订入口，避免走完就被锁死 */
     el('stage-footer').innerHTML = `<div class="foot-row">
       <button class="next-btn ghost" onclick="reopenForEdit()">‹ 回去修订</button>
-      <button class="next-btn coral" onclick="exportCard('${t.id}',true)">📥 再存一张卡</button>
+      <button class="next-btn coral" onclick="exportCard('${t.id}',true)">${svgIcon('down',17)} 再存一张卡</button>
     </div>
     <div class="foot-row" style="margin-top:8px;"><button class="next-btn ghost" onclick="goHome()">← 回到首页</button></div>`;
   } else {
@@ -695,7 +863,7 @@ function renderStage() {
 function answeredTurn(i, s, ans, key) {
   let a = ans;
   if (s.type === 'ai') a = (ans.mode ? '【' + ans.mode + '】' : '') + (ans.text || '').slice(0, 120);
-  if (s.type === 'verdict') a = ans === 'valid' ? '✅ 有效' : '❌ 错了';
+  if (s.type === 'verdict') a = ans === 'valid' ? '有效' : '偏了，已修订';
   if (s.type === 'advice') a = '已收到验证建议（可重新生成）';
   /* 问题定义：用凸显卡，从四步真实数据重建（自动修复旧数据的下划线） */
   const body = s.type === 'template' ? problemHeroHTML(getCur()) : `<div class="turn-a">${esc(a || '')}</div>`;
@@ -712,7 +880,7 @@ function currentTurn(i, s, d, t, key) {
     const draft = d.aiDraft || {};
     if (!draft.challenge && !draft.plan) {
       input = `<div class="ai-choices">
-        <button class="ai-choice" onclick="runAICollab()">⚔️ 开始协作：先挑战我的判断，再给方案 →</button>
+        <button class="ai-choice" onclick="runAICollab()">${svgIcon('hands',18)} 开始协作：先挑战我的判断，再给方案 →</button>
       </div>
       ${aiStatusLine()}
       <div id="ai-result"></div>`;
@@ -722,13 +890,13 @@ function currentTurn(i, s, d, t, key) {
   } else if (s.type === 'advice') {
     input = `<div id="advice-box">${adviceHTML(d)}</div>
       <div class="advice-actions">
-        <button class="btn-mini" onclick="regenAdvice(true)">🔄 重新生成建议</button>
+        <button class="btn-mini" onclick="regenAdvice(true)">↻ 重新生成</button>
         <button class="btn-mini primary" onclick="answerAdvice()">照这个去做 →</button>
       </div>`;
   } else if (s.type === 'verdict') {
     input = `<div class="judge-group">
-      <button id="j-valid" onclick="setVerdict('valid')">✅ 有效</button>
-      <button id="j-wrong" onclick="setVerdict('wrong')">❌ 错了</button>
+      <button id="j-valid" onclick="setVerdict('valid')">有效</button>
+      <button id="j-wrong" onclick="setVerdict('wrong')">判断偏了</button>
     </div>`;
   } else {
     let pre = d.answers[s.id] || '';
@@ -736,13 +904,16 @@ function currentTurn(i, s, d, t, key) {
     const hero = s.type === 'template' ? `<div id="problem-hero">${problemHeroHTML(t)}</div>` : '';
     const onIn = s.type === 'template' ? ' oninput="updateProblemHero()"' : '';
     const isProblem = s.type === 'template';
-    const aiBtn = isProblem ? `<button class="ex-regen" id="problem-ai-btn" onclick="regenProblemAI()">✨ 让 AI 归纳得更准</button>` : '';
+    const aiBtn = isProblem ? `<button class="ex-regen" id="problem-ai-btn" onclick="regenProblemAI()">${svgIcon('spark',14)} 让 AI 归纳得更准</button>` : '';
     const regenLink = (t.examples && t.examples[s.id] && !isProblem)
       ? `<button class="ex-regen" id="ex-regen-btn" onclick="regenExamples()">↻ 换个贴合我的例子</button>` : '';
     const editHint = isProblem ? `<div class="problem-edit-tip">上面是完整定义。这里只改最后那句"需要解决的问题"，也可以直接让 AI 重新归纳。</div>` : '';
+    /* 跳过：非核心步骤可跳过，降低"每一步都必须填满"的压力；问题定义结论不跳过 */
+    const skipBtn = !isProblem ? `<button class="skip-link" onclick="skipStep()">这步先跳过 →</button>` : '';
     input = `${hero}${editHint}<textarea id="step-input"${onIn} placeholder="${esc(exampleFor(t, s))}">${esc(pre)}</textarea>
       ${aiBtn}${regenLink}
-      <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>`;
+      <button class="btn step-confirm" onclick="answerStep()">${d.answers[s.id] ? '更新这步' : '记下，继续 →'}</button>
+      ${skipBtn}`;
   }
   return `<div class="turn current">
     <span class="now-tag">现在轮到你</span>
@@ -778,9 +949,9 @@ function aiStatusLine() {
   const s = DB.settings || {};
   if (s.aiKey) {
     const names = { deepseek: 'DeepSeek', openai: 'OpenAI', custom: '自定义' };
-    return `<div class="ai-ready">✅ 你的 AI 已连接（${names[s.aiProvider] || '自定义'}）。M2 将在这里真正与你协作：理清 / 质疑 / 找证据。</div>`;
+    return `<div class="ai-ready">你的 AI 已连接（${names[s.aiProvider] || '自定义'}），会在这里和你一起想。</div>`;
   }
-  return `<div class="ai-note">🔑 还没填 AI Key？在首页右上角 ⚙️ AI 设置 里填一个，M2 就能真的和你一起想了。</div>`;
+  return `<div class="ai-note">还没填 AI Key？在首页右上角 AI 设置 里填一个，就能真的和你一起想。</div>`;
 }
 function prevStage() {
   if (curStage > 2) {
@@ -805,6 +976,7 @@ function reopenForEdit() {
   toast('已回到前面，可继续修订 ✎');
 }
 function toggleHelp() { const h = el('help-sheet'); if (h) h.classList.toggle('show'); }
+function toggleAnswered() { answeredOpen = !answeredOpen; renderStage(); }
 
 /* ---------- 对话交互 ---------- */
 let editIdx = -1;
@@ -826,6 +998,16 @@ function answerStep() {
   d.progress++;
   if (key === 'verify' && s.id === 'test') d.risk = (d.risk === true);
   t.updatedAt = Date.now(); save(); renderStage();
+  const kudos = STEP_KUDOS[s.id]; if (kudos) toast(kudos);
+}
+/* 跳过当前普通步骤：写入占位答案并推进，不阻塞流程，随时可点“改”回来补 */
+function skipStep() {
+  const t = getCur(); if (!t) return;
+  const key = STAGES[curStage].key, flow = getFlow(key), d = ensureFlow(t, key);
+  const s = flow.steps[d.progress]; if (!s) return;
+  d.answers[s.id] = '（这步先跳过了）';
+  d.progress++; t.updatedAt = Date.now(); save(); renderStage();
+  toast('已跳过，随时可以点开补上');
 }
 function editTurn(i) {
   const t = getCur(); if (!t) return;
@@ -1006,7 +1188,7 @@ function summaryHTML(t, key) {
   const pairs = flow.steps.filter(s => a[s.id]).map(s => {
     let v = a[s.id];
     if (s.type === 'ai') v = (v.mode || '') + '：' + (v.text || '').slice(0, 80);
-    if (s.type === 'verdict') v = v === 'valid' ? '✅ 有效' : '❌ 错了';
+    if (s.type === 'verdict') v = v === 'valid' ? '有效' : '偏了';
     if (s.type === 'advice') v = '已收到验证建议';
     /* 小结里不再放大凸显卡，问题定义在对话区已完整展示；这里只留一句话摘要 */
     if (s.type === 'template') {
@@ -1062,18 +1244,18 @@ function nextStage() {
     /* 走完留在进阶屏，完成卡在进阶屏内显示（不再弹到首页，首页保持极简） */
     t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); save();
     renderStage();
-    toast('这一趟，走完了 🎉');
-    ensureTopic(t);   /* 异步生成 ≤6 字问题标签，供探索卡标题用 */
+    toast('这一趟，走完了');
+    ensureTopic(t);   /* 异步生成完整短语标签，供探索卡标题用 */
   }
 }
 /* 完成卡：只在进阶屏内显示，由 renderStage 注入 */
 function finishCardHTML(t) {
   return `<div class="finish-card">
-    <div class="finish-emoji">🎉</div>
+    <div class="finish-mark">${svgIcon('trophy', 30)}</div>
     <div class="finish-title">这一趟，走完了</div>
     <div class="finish-text">从「<span id="card-topic">${esc(displayTopic(t))}</span>」到亲手验证，这一趟值得留一张卡。</div>
-    <button class="btn finish-btn" onclick="exportCard('${t.id}',true)">📥 生成我的探索卡</button>
-    <button class="finish-revisit" onclick="reopenForEdit()">✎ 回去再改改</button>
+    <button class="btn finish-btn" onclick="exportCard('${t.id}',true)">${svgIcon('down',18)} 生成我的探索卡</button>
+    <button class="finish-revisit" onclick="reopenForEdit()">回去再改改</button>
     <div class="finish-foot">不打卡，不排名——这张卡，只属于你自己。</div>
   </div>`;
 }
@@ -1085,7 +1267,7 @@ function finishThread(status) {
   t.status = status;
   t.finishedAt = Date.now(); t.stoppedAtStage = curStage;
   t.updatedAt = Date.now(); save();
-  goHome(); toast(status === 'archived' ? '已先存着 📦' : '已放下 🌿');
+  goHome(); toast(status === 'archived' ? '已先存着' : '已放下');
 }
 function saveDraft() {
   if (!curThreadId) { toast('没有可保存的内容'); return; }
@@ -1094,7 +1276,45 @@ function saveDraft() {
     const key = STAGES[curStage].key, d = ensureFlow(getCur(), key), s = getFlow(key).steps[d.progress];
     if (s) d.answers[s.id] = inp.value.trim();
   }
-  save(); toast('已存草稿 💾');
+  save(); toast('已存草稿');
+}
+
+/* ---------- 数据导出 / 导入：换机不丢 ---------- */
+function exportData() {
+  try {
+    const payload = JSON.stringify({ app:'mind-gym', version:2, exportedAt:new Date().toISOString(), data:DB }, null, 2);
+    const blob = new Blob([payload], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `探奇-备份-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('备份已导出');
+  } catch (e) { toast('导出失败'); console.error(e); }
+}
+function importData(e) {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const j = JSON.parse(ev.target.result);
+      const data = j && j.data ? j.data : j;
+      if (!data || !Array.isArray(data.threads)) throw new Error('bad format');
+      if (!confirm(`导入 ${data.threads.length} 条探索？\n\n这会覆盖这台设备上的现有数据，无法撤销。`)) return;
+      DB = {
+        user: Object.assign({ name:null, isMinor:false, guardianPhone:'', consent:false, ageConfirmed:true, aboutClosed:false }, data.user || {}),
+        threads: data.threads,
+        settings: data.settings || {}
+      };
+      save();
+      renderHomeThreads(); if (el('s-pool').classList.contains('active')) { renderPool(); renderTopics(); }
+      if (el('s-mine').classList.contains('active')) renderMine();
+      updateAiBtn();
+      toast('导入成功');
+    } catch (err) { toast('文件格式不对，导入失败'); console.error(err); }
+  };
+  reader.readAsText(f);
+  e.target.value = '';
 }
 
 /* ---------- 我的成长 ---------- */
@@ -1106,9 +1326,24 @@ function setName() {
 function renderGreet() {
   const g = el('mine-greet');
   if (DB.user.name) {
-    g.innerHTML = `<div><span class="g-name">你好，${esc(DB.user.name)}</span> 👋</div>
-      <div class="g-sub">本周我来帮助你练习思维肌肉 💪</div>`;
+    g.innerHTML = `<div><span class="g-name">你好，${esc(DB.user.name)}</span></div>
+      <div class="g-sub">每周练一点点，看得见自己变强</div>`;
   } else g.innerHTML = '';
+}
+/* 探索墙：把走过的每一条探索铺成一面墙，越走越满 = 看得见的坚持 */
+function wallHTML(done) {
+  if (!done.length) return `<div class="wall-empty">还没有完成的探索。<br>走完一趟，这里就多一块。</div>`;
+  const marks = [1, 5, 10, 25, 50];
+  const ms = marks.map(n => `<div class="milestone ${done.length >= n ? 'got' : ''}">
+      <div class="ms-dot">${n >= 50 ? '50+' : n}</div><span>${n} 趟</span></div>`).join('');
+  const tiles = done.slice(0, 12).map((t, i) => {
+    const topic = displayTopic(t).slice(0, 18);
+    return `<div class="wall-tile" onclick="openThread('${t.id}')">
+      <span class="wt-num">#${done.length - i}</span>
+      <span class="wt-title">${esc(topic)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="milestones">${ms}</div><div class="wall-grid">${tiles}</div>`;
 }
 function renderMine() {
   renderGreet();
@@ -1116,6 +1351,7 @@ function renderMine() {
   el('reopen-about').style.display = DB.user.aboutClosed ? 'block' : 'none';
   const threads = DB.threads;
   const total = threads.length;
+  const done = threads.filter(t => t.status === 'done');
   const hasA = (t, key, id) => !!(t.stageData && t.stageData[key] && t.stageData[key].answers && t.stageData[key].answers[id]);
   const defined = threads.filter(t => hasA(t, 'define', 'problem')).length;
   const verified = threads.filter(t => hasA(t, 'verify', 'result')).length;
@@ -1124,23 +1360,51 @@ function renderMine() {
   const score = Math.min(100, total * 10 + defined * 15 + verified * 20);
   el('ring-num').textContent = score;
   el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
-  el('grow-sub').textContent = total ? `发现 ${total} · 定义 ${defined} · 验证 ${verified}` : '先去记下你的第一条探索吧';
+  el('grow-sub').textContent = total ? `发现 ${total} · 定义 ${defined} · 验证 ${verified} · 走完 ${done.length}` : '先去记下你的第一条探索吧';
   const disc = Math.min(100, total * 12);
   const def = total ? Math.round(defined / total * 100) : 0;
   const ver = total ? Math.round(verified / total * 100) : 0;
   const cal = total ? Math.round(judged / total * 100) : 0;
-  el('radar-svg').innerHTML = drawRadar([disc, def, ver, cal]);
-  const weak = Math.min(disc, def, ver, cal);
-  el('radar-note').textContent = total ? `最弱项已用橙色标出，优先练 💪（当前最弱 ${weak}）` : '记几条探索后，这里会画出你的能力雷达';
+  const vals = [disc, def, ver, cal];
+  el('radar-svg').innerHTML = drawRadar(vals);
+  /* 趋势徽标：与上一次（按完成时间）对比综合分 */
+  const scores = done.slice().sort((a,b) => (a.finishedAt||a.updatedAt) - (b.finishedAt||b.updatedAt))
+    .map(t => threadScore(t));
+  const trendEl = el('radar-trend');
+  if (scores.length >= 2 && scores[scores.length - 1] > scores[scores.length - 2]) {
+    trendEl.textContent = '比上次强了'; trendEl.style.display = '';
+  } else if (scores.length) { trendEl.textContent = '持续记录中'; trendEl.style.display = ''; }
+  else { trendEl.style.display = 'none'; }
+  /* 成长轨迹：每完成一趟的分数柱状图，随时间生长 */
+  el('history-spark').innerHTML = scores.length
+    ? `<div class="hist-spark">${scores.slice(-14).map(v => `<i style="height:${Math.max(6, v)}%" title="综合 ${v}"></i>`).join('')}</div>
+       <div class="hist-label"><span>最早的探索</span><span>最近 ${scores.length} 趟</span></div>`
+    : '';
+  const weak = Math.min(...vals);
+  el('radar-note').textContent = total ? `橙色是最弱的一项，优先练它就会更均衡（当前最弱 ${weak}）` : '记几条探索后，这里会画出你的能力雷达';
+  /* 探索墙：整块注入（里程碑 + 网格） */
+  el('wall-count').textContent = done.length ? `${done.length} 块` : '';
+  const wallHost = el('wall-milestones').parentNode;
+  if (wallHost) wallHost.innerHTML = wallHTML(done);
   const jl = el('judgment-list');
-  if (!total) { jl.innerHTML = '还没有记录。<br>每次你“先写下自己的判断”，都会变成长期资产 📌'; }
+  if (!total) { jl.innerHTML = '还没有记录。<br>每次你"先写下自己的判断"，都会变成长期资产。'; }
   else {
-    let h = `<div class="sc-row">📌 你已写下 <b>${judged}</b> 条自己的判断（先判再看）</div>`;
-    h += `<div class="sc-row">📌 你已验证 <b>${verified}</b> 条，记录了有效 / 错误</div>`;
-    if (risk) h += `<div class="sc-row">📌 你有 <b>${risk}</b> 条涉及风险——记得都查了来源吗？</div>`;
-    h += `<div class="sc-row" style="color:var(--muted)">这些“为什么这样选”的积累，是长期最值钱的东西。</div>`;
+    let h = `<div class="sc-row">你已写下 <b>${judged}</b> 条自己的判断（先判再看）</div>`;
+    h += `<div class="sc-row">你已验证 <b>${verified}</b> 条，记录了有效 / 错误</div>`;
+    if (risk) h += `<div class="sc-row">你有 <b>${risk}</b> 条涉及风险——记得都查了来源吗？</div>`;
+    h += `<div class="sc-row" style="color:var(--muted)">这些"为什么这样选"的积累，是长期最值钱的东西。</div>`;
     jl.innerHTML = h;
   }
+}
+/* 单条探索的综合能力分（用于成长轨迹） */
+function threadScore(t) {
+  const a = (t.stageData || {});
+  let s = 10;
+  if (a.define && a.define.answers && a.define.answers.problem) s += 30;
+  if (a.collab && a.collab.answers && a.collab.answers.direction) s += 25;
+  if (a.collab && a.collab.answers && a.collab.answers.ai) s += 15;
+  if (a.verify && a.verify.answers && a.verify.answers.result) s += 20;
+  return Math.min(100, s);
 }
 function drawRadar(vals) {
   const cx = 130, cy = 105, R = 78;
@@ -1149,27 +1413,28 @@ function drawRadar(vals) {
   let grid = '';
   [0.25, 0.5, 0.75, 1].forEach(f => {
     const p = vals.map((_, i) => pt(i, R * f).map(n => n.toFixed(1)).join(','));
-    grid += `<polygon points="${p.join(' ')}" fill="none" stroke="#e7ece9" stroke-width="1"/>`;
+    grid += `<polygon points="${p.join(' ')}" fill="none" stroke="#E9EEEA" stroke-width="1"/>`;
   });
   let axes = '';
-  vals.forEach((_, i) => { const [x, y] = pt(i, R); axes += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#e7ece9" stroke-width="1"/>`; });
+  vals.forEach((_, i) => { const [x, y] = pt(i, R); axes += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#E9EEEA" stroke-width="1"/>`; });
   const datap = vals.map((v, i) => pt(i, R * v / 100).map(n => n.toFixed(1)).join(','));
-  const dataPoly = `<polygon points="${datap.join(' ')}" fill="rgba(14,107,80,.18)" stroke="#0E6B50" stroke-width="2"/>`;
+  const dataPoly = `<polygon points="${datap.join(' ')}" fill="rgba(18,153,108,.18)" stroke="#12996C" stroke-width="2"/>`;
+  const dots = vals.map((v, i) => { const [x,y] = pt(i, R * v / 100); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#12996C"/>`; }).join('');
   const weak = vals.indexOf(Math.min(...vals));
   const labels = [
-    { t: `🔍 发现 ${vals[0]}`, pos: pt(0, R + 18) },
-    { t: `💡 定义 ${vals[1]}`, pos: pt(1, R + 18) },
-    { t: `🧪 验证 ${vals[2]}`, pos: pt(2, R + 18) },
-    { t: `🎯 校准 ${vals[3]}`, pos: pt(3, R + 18) }
+    { t: `发现 ${vals[0]}`, pos: pt(0, R + 18) },
+    { t: `定义 ${vals[1]}`, pos: pt(1, R + 18) },
+    { t: `验证 ${vals[2]}`, pos: pt(2, R + 18) },
+    { t: `校准 ${vals[3]}`, pos: pt(3, R + 18) }
   ];
   let labs = '';
   labels.forEach((l, i) => {
     const anchor = i === 1 ? 'start' : i === 3 ? 'end' : 'middle';
     const dy = i === 0 ? -4 : i === 2 ? 14 : 4;
-    const col = i === weak ? '#FF8A5B' : '#1c2b25';
-    labs += `<text x="${l.pos[0].toFixed(1)}" y="${(l.pos[1] + dy).toFixed(1)}" text-anchor="${anchor}" font-size="12" font-weight="700" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${l.t}</text>`;
+    const col = i === weak ? '#FF7A50' : '#3B4A42';
+    labs += `<text x="${l.pos[0].toFixed(1)}" y="${(l.pos[1] + dy).toFixed(1)}" text-anchor="${anchor}" font-size="12" font-weight="800" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${l.t}</text>`;
   });
-  return `<svg viewBox="-10 0 280 220" width="100%" style="display:block;">${grid}${axes}${dataPoly}${labs}</svg>`;
+  return `<svg viewBox="-38 -14 356 250" width="100%" style="display:block;">${grid}${axes}${dataPoly}${dots}${labs}</svg>`;
 }
 
 /* ===================== 探索卡 PNG 导出（canvas 手绘，零依赖） ===================== */
@@ -1181,7 +1446,7 @@ function exportCard(id, backToHome) {
     const a = document.createElement('a');
     a.href = url; a.download = `探奇-探索卡-${new Date().toISOString().slice(0, 10)}.png`;
     document.body.appendChild(a); a.click(); a.remove();
-    toast('探索卡已生成 📥');
+    toast('探索卡已生成');
     if (backToHome) setTimeout(() => goHome(), 700);
   } catch (e) { toast('生成失败，请重试'); console.error(e); }
 }
