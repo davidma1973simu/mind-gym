@@ -115,7 +115,9 @@ function renderAiStatus() {
 }
 function goHome() { go('s-home'); }
 function toast(msg) {
-  const t = el('toast'); t.textContent = msg; t.classList.add('show');
+  const t = el('toast');
+  if (!t) return; // 防御：toast 节点缺失时绝不抛错，避免中断调用方的后续逻辑
+  t.textContent = msg; t.classList.add('show');
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1600);
 }
 
