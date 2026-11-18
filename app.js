@@ -84,7 +84,14 @@ function load() {
   } catch (e) {}
   return { user: { name: null, isMinor: false, guardianPhone: '', consent: false, ageConfirmed: false, aboutClosed: false }, threads: [], settings: {} };
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {} }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(DB)); }
+  catch (e) {
+    /* 静默失败会让用户以为存好了，刷新后全丢。明确告知并给可执行出路。 */
+    try { toast('空间满了，数据没存上。请导出备份后清理旧探索'); } catch (x) {}
+    console.error('save failed:', e);
+  }
+}
 function el(id) { return document.getElementById(id); }
 function go(id, btn) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -105,12 +112,13 @@ function setNav(id) {
   if (id === 's-home') document.querySelectorAll('.nav-item')[0].classList.add('on');
   if (id === 's-mine') document.querySelectorAll('.nav-item')[1].classList.add('on');
 }
-/* FAB 只在家页且无需分诊时显示，避免遮挡底部“下一步 / 整理一下”按钮导致无法点按 */
+/* FAB 不在首页显示：首页输入框已有"+"捕捉入口，重复且遮挡。
+   stage 页也不显示（底部有下一步）；只在探索池/我的页提供快速捕捉。 */
 function updateFab() {
   const fab = el('fab'); if (!fab) return;
   const homeActive = el('s-home').classList.contains('active');
-  const triageVisible = el('triage-entry') && el('triage-entry').classList.contains('show');
-  fab.style.display = (homeActive && !triageVisible) ? 'flex' : 'none';
+  const stageActive = el('s-stage').classList.contains('active');
+  fab.style.display = (!homeActive && !stageActive) ? 'flex' : 'none';
 }
 /* 首页 AI 设置按钮：连接状态用一个小圆点表示，不再覆盖 SVG 图标 */
 function updateAiBtn() {
@@ -180,6 +188,24 @@ function revealNode(node) {
   const scroller = node.closest('.screen');
   if (scroller && !scroller.classList.contains('active')) return;
   try { node.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+/* 无障碍：div 充当按钮时补 keyboard 可达性。用 MutationObserver 覆盖所有动态渲染，
+   避免在每个模板点手工加属性而遗漏。 */
+function patchClickable(node) {
+  const nodes = node.querySelectorAll ? node.querySelectorAll('div[onclick]') : [];
+  nodes.forEach(d => {
+    if (d.dataset.a11y === '1') return;
+    d.dataset.a11y = '1';
+    d.setAttribute('role', 'button');
+    d.setAttribute('tabindex', '0');
+    d.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); }
+    });
+  });
+}
+if (typeof MutationObserver !== 'undefined') {
+  new MutationObserver(ms => ms.forEach(m => patchClickable(m.target)))
+    .observe(document.body, { childList: true, subtree: true });
 }
 
 /* ---------- 年龄门禁 ---------- */
@@ -290,7 +316,8 @@ function moreCapture() {
   el('home-feedback').classList.remove('show');
   el('home-input').focus();
 }
-function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+/* HTML 转义含引号：esc 结果会被放进 href/value/src 等双引号属性，不转引号即可属性逃逸注入 */
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 /* ---------- 多源捕捉面板 ---------- */
 /* 关键不变量：任何来源进 addThread 前，raw 都必须是一句有真实语义的中文描述。
@@ -1030,7 +1057,7 @@ function renderStage() {
   const key = m.key, flow = getFlow(key);
   const d = ensureFlow(t, key);
   el('stage-label').textContent = m.label;
-  let body = `<div class="stage-why">${m.why}<button class="help-pill" onclick="toggleHelp()">?</button></div>
+  let body = `<div class="stage-why">${m.why}<button class="help-pill" onclick="toggleHelp()" aria-label="查看这一步的说明">?</button></div>
     <div class="help-sheet" id="help-sheet">${esc(flow.intro)}</div>`;
   body += stepperHTML(curStage);
   /* 步内进度条：让"还差几问"一眼可见 */
@@ -1092,7 +1119,6 @@ function renderStage() {
     el('stage-footer').innerHTML = `<div class="foot-row">${prevBtn}<button class="next-btn ${curStage === 5 ? 'coral' : ''}" id="next-btn" onclick="nextStage()">${m.nextLabel}</button></div><div class="next-hint" id="next-hint"></div>${exitBar}`;
   }
   el('chrome-prev').style.display = curStage > 2 ? 'block' : 'none';
-  bindFlow(key, t, d);
   updateGate(done, key);
   /* 走到"问题定义"这一步时，有 Key 就 Async 归纳一句更准的问题（幂等，已有则不重复） */
   if (key === 'define' && (flow.steps[d.progress] || {}).type === 'template') ensureProblemAI(t);
@@ -1110,7 +1136,7 @@ function answeredTurn(i, s, ans, key) {
   return `<div class="turn done">
     <div class="turn-q"><span class="turn-n">${i + 1}</span><b>${s.label}</b> · ${esc(s.q)}</div>
     ${body}
-    <button class="turn-edit" onclick="editTurn(${i})">改 ✎</button>
+    <button class="turn-edit" onclick="editTurn(${i})" aria-label="修改第 ${i + 1} 步的回答">改 ✎</button>
   </div>`;
 }
 /* 当前回合：输入框 / AI 选择 / 验证建议 / 判断 */
@@ -1181,10 +1207,6 @@ function stepperHTML(cur) {
   });
   return h + '</div>';
 }
-function qcardHTML(qs) {
-  if (!qs || !qs.length) return '';
-  return `<div class="qcard"><div class="qcard-title">这一步要回答的问题</div><ul class="qlist">${qs.map(q => `<li>${esc(q)}</li>`).join('')}</ul></div>`;
-}
 function aiStatusLine() {
   const s = DB.settings || {};
   if (s.aiKey) {
@@ -1221,8 +1243,6 @@ function toggleHelp() { const h = el('help-sheet'); if (h) h.classList.toggle('s
 function toggleAnswered() { answeredOpen = !answeredOpen; renderStage(); }
 
 /* ---------- 对话交互 ---------- */
-let editIdx = -1;
-function bindFlow(key, t, d) { editIdx = -1; }
 function answerStep() {
   const t = getCur(); if (!t) return;
   const key = STAGES[curStage].key, flow = getFlow(key), d = ensureFlow(t, key);
@@ -1238,7 +1258,6 @@ function answerStep() {
     d.answers[s.id] = val;
   }
   d.progress++;
-  if (key === 'verify' && s.id === 'test') d.risk = (d.risk === true);
   t.updatedAt = Date.now(); save(); renderStage();
   const kudos = STEP_KUDOS[s.id]; if (kudos) toast(kudos);
 }
@@ -1550,6 +1569,16 @@ function importData(e) {
       const j = JSON.parse(ev.target.result);
       const data = j && j.data ? j.data : j;
       if (!data || !Array.isArray(data.threads)) throw new Error('bad format');
+      /* 深层校验：损坏/恶意 JSON 不能进渲染层。字段类型不符就拒绝整个文件。 */
+      const valid = data.threads.every(t =>
+        t && typeof t === 'object' && typeof t.id === 'string' &&
+        typeof (t.raw || t.title || '') === 'string' &&
+        (!t.stageData || typeof t.stageData === 'object') &&
+        (!t.media || (typeof t.media === 'object' &&
+          (t.media.type !== 'photo' || /^data:image\//.test(t.media.data || '')) &&
+          (t.media.type !== 'link' || /^https?:\/\//.test(t.media.url || ''))))
+      );
+      if (!valid) throw new Error('invalid thread fields');
       if (!confirm(`导入 ${data.threads.length} 条探索？\n\n这会覆盖这台设备上的现有数据，无法撤销。`)) return;
       DB = {
         user: Object.assign({ name:null, isMinor:false, guardianPhone:'', consent:false, ageConfirmed:true, aboutClosed:false }, data.user || {}),
@@ -1934,7 +1963,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
   ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
 }
-function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 /* ---------- 启动 ---------- */
 function init() {
