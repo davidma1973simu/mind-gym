@@ -173,6 +173,14 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1600);
 }
+/* AI 结果异步写入后，把结果滚进视野。点了按钮却看不到结果，比没结果更糟。
+   isConnected + active screen 双重校验：切屏后旧节点不抢滚动。 */
+function revealNode(node) {
+  if (!node || !node.isConnected) return;
+  const scroller = node.closest('.screen');
+  if (scroller && !scroller.classList.contains('active')) return;
+  try { node.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
 
 /* ---------- 年龄门禁 ---------- */
 function setAge(minor) {
@@ -267,7 +275,8 @@ async function ensureSpark(t) {
   }
   if (!spark) spark = localSpark(topic, t.sourceMode);
   t.spark = spark; save();
-  const slot = el('spark-slot'); if (slot) slot.innerHTML = sparkHTML(spark);
+  const slot = el('spark-slot');
+  if (slot && slot.isConnected) { slot.innerHTML = sparkHTML(spark); revealNode(slot); }
 }
 function localSpark(topic, sourceMode) {
   const cfg = MODE_META[sourceMode || 'passive'];
@@ -661,6 +670,7 @@ function openThread(id) {
   curThreadId = id;
   if (t.status === 'captured') { go('s-pool'); return; }
   curStage = t.stagePointer;
+  answeredOpen = false;   /* 换线索：收起上一条的已答回合 */
   go('s-stage');
   renderStage();
   ensureExamples(t);   /* 捕捉时无 Key、后来才填的补救：首次进入阶段时补生成 */
@@ -850,6 +860,7 @@ async function ensureProblemAI(t, force) {
   const ta = el('step-input');
   if (ta && !d.answers.problemAsk) ta.value = q;  /* 用户已改写就不覆盖 */
   updateProblemHero();                            /* 就地刷新凸显卡的结论 */
+  revealNode(el('problem-hero'));                 /* 归纳结果滚进视野，别让用户以为没生成 */
 }
 async function regenProblemAI() {
   const t = getCur(); if (!t) return;
@@ -966,7 +977,8 @@ async function deepenReview() {
   if (res.ok) { im.aiReview = res.text; im.aiReviewSource = 'AI 点评'; }
   else { im.aiReview = localReview(r); im.aiReviewSource = '本地模板（AI 不可用，已降级）'; }
   save();
-  const host = el('review-slot'); if (host) host.innerHTML = reviewHTML(t);
+  const host = el('review-slot');
+  if (host && host.isConnected) { host.innerHTML = reviewHTML(t); revealNode(host); }
   else toast('点评已生成');
 }
 function localReview(r) {
@@ -1183,6 +1195,7 @@ function prevStage() {
       if (t.status === 'done') { t.status = 'active'; t.finishedAt = null; }
       save();
     }
+    answeredOpen = false;   /* 跨阶段：收起已答回合 */
     curStage = curStage - 1; renderStage();
     toast('已回到上一步，可继续修订');
   }
@@ -1193,8 +1206,9 @@ function reopenForEdit() {
   t.status = 'active'; t.finishedAt = null;
   const target = curStage > 2 ? curStage - 1 : 2;
   t.stagePointer = target; curStage = target; save();
+  answeredOpen = false;   /* 跨阶段：收起已答回合 */
   renderStage();
-  toast('已回到前面，可继续修订 ✎');
+  toast('已回到前面，可继续修订');
 }
 function toggleHelp() { const h = el('help-sheet'); if (h) h.classList.toggle('show'); }
 function toggleAnswered() { answeredOpen = !answeredOpen; renderStage(); }
@@ -1282,7 +1296,7 @@ async function runAICollab() {
   const chSrc = chRes.ok ? 'AI 实时生成' : (chRes.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 已降级）');
   d.aiDraft = { challenge: { text: chText, source: chSrc }, plan: {} };
   t.updatedAt = Date.now(); save();
-  if (box) box.innerHTML = aiCollabResultHTML(d.aiDraft);
+  if (box && box.isConnected) { box.innerHTML = aiCollabResultHTML(d.aiDraft); revealNode(box); }
   /* 第二步：把"我的判断 + AI 的质疑"一起交给 AI，让它出方案，而不是凭空给 */
   const planSys = '你是思考教练。先看过你对用户判断的反驳，再给出一个具体可执行的方案，分3步、每步一句。方案必须正面回应你刚才提出的质疑，不要空话。中文，总共不超过150字。';
   const planCtx = base + `\n\n你刚才的反驳：\n${chText}`;
@@ -1291,7 +1305,7 @@ async function runAICollab() {
   const plSrc = plRes.ok ? 'AI 实时生成' : (plRes.reason === 'nokey' ? '本地模板（未配置 Key）' : '本地模板（AI 已降级）');
   d.aiDraft.plan = { text: plText, source: plSrc };
   save();
-  if (box) box.innerHTML = aiCollabResultHTML(d.aiDraft);
+  if (box && box.isConnected) { box.innerHTML = aiCollabResultHTML(d.aiDraft); revealNode(box); }
 }
 function answerAI() {
   const t = getCur(); if (!t) return;
@@ -1322,7 +1336,7 @@ async function regenAdvice(force) {
   if (res.ok) { d.advice = splitAdvice(res.text); d.adviceSource = 'ai'; }
   else { d.advice = localAdvice(problem, solution, challenge); d.adviceSource = 'local'; }
   save();
-  if (box) box.innerHTML = adviceHTML(d);
+  if (box && box.isConnected) { box.innerHTML = adviceHTML(d); revealNode(box); }
 }
 /* 进入验证阶段即自动生成一次 */
 function ensureAdvice() { const t = getCur(); if (t) regenAdvice(false); }
@@ -1459,6 +1473,7 @@ function nextStage() {
   const t = getCur(); if (!t) return;
   const key = STAGES[curStage].key, d = ensureFlow(t, key), flow = getFlow(key);
   if (d.progress < flow.steps.length) { toast('先把这段对话走完'); return; }
+  answeredOpen = false;   /* 进入新阶段：已答回合重置为收起，避免上一阶段的展开态残留 */
   if (key === 'verify' && d.risk === true && !(d.source || '').trim()) { toast('这条涉及风险，先补来源'); return; }
   if (curStage < 5) { t.stagePointer = curStage + 1; curStage = curStage + 1; save(); renderStage(); }
   else {
