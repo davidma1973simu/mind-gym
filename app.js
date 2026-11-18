@@ -193,10 +193,16 @@ function confirmAge() {
 }
 
 /* ---------- 捕捉（首页） ---------- */
+function applyModeUI() {
+  const cfg = MODE_META[mode];
+  const inp = el('home-input'); if (inp) inp.placeholder = cfg.ph;
+  const hint = el('mode-hint'); if (hint) hint.textContent = cfg.hint;
+}
 function setMode(m, btn) {
   mode = m;
   document.querySelectorAll('.mode-chip').forEach(c => c.classList.remove('on'));
-  btn.classList.add('on');
+  if (btn) btn.classList.add('on');
+  applyModeUI();
 }
 function newThread(raw, media) {
   return {
@@ -250,7 +256,8 @@ async function ensureSpark(t) {
   let spark = null;
   if (s.aiKey) {
     const sys = '你是青少年思维教练。学生刚记下一个生活里的疑问。写两句中文：第一句肯定他抓到的东西为什么值得探（具体、不空夸，≤24字）；第二句抛一个能逼他往下想的刁钻追问（≤30字）。只输出两行，第一行以"赞："开头，第二行以"问："开头，不要别的。';
-    const res = await callAI(sys, '我记下的疑问：' + topic, 200);
+    const pathLine = MODE_META[modeOf(t)].example;
+    const res = await callAI(sys, '我记下的疑问：' + topic + '\n路径：' + pathLine, 200);
     if (res.ok) {
       const lines = res.text.split(/\n+/).map(x => x.trim()).filter(Boolean);
       const praise = (lines.find(x => /^赞[:：]/.test(x)) || lines[0] || '').replace(/^赞[:：]\s*/, '');
@@ -258,15 +265,15 @@ async function ensureSpark(t) {
       if (praise && probe) spark = { praise: praise.slice(0, 40), probe: probe.slice(0, 48), src: 'ai' };
     }
   }
-  if (!spark) spark = localSpark(topic);
+  if (!spark) spark = localSpark(topic, t.sourceMode);
   t.spark = spark; save();
   const slot = el('spark-slot'); if (slot) slot.innerHTML = sparkHTML(spark);
 }
-function localSpark(topic) {
-  const t = String(topic || '');
+function localSpark(topic, sourceMode) {
+  const cfg = MODE_META[sourceMode || 'passive'];
   return {
-    praise: '这条疑问藏着一个可以被验证的"为什么"，值得较真。',
-    probe: /为什么|为何/.test(t) ? '如果反过来想，答案还成立吗？' : '如果它只发生一次，还算问题吗？',
+    praise: cfg.spark,
+    probe: cfg.probe,
     src: 'local'
   };
 }
@@ -561,7 +568,7 @@ function renderHomeThreads() {
     return `<div class="tri-card" onclick="openThread('${t.id}')">
       ${ico}
       <div class="tri-main">
-        <div class="tri-title">${esc(t.title || t.raw)}</div>
+        <div class="tri-title">${esc(t.title || t.raw)}<span class="mode-tag ${t.sourceMode === 'active' ? 'active' : ''}">${MODE_META[modeOf(t)].name}</span></div>
         <div class="tri-sub">${sub}</div>
         ${railHTML(t)}
       </div>
@@ -589,7 +596,7 @@ function renderPool() {
     return `<div class="tri-card" style="display:block;">
       <div style="display:flex;gap:10px;align-items:flex-start;">
         ${ico}
-        <div class="tri-main"><div class="tri-title">${esc(t.title || t.raw)}</div></div>
+        <div class="tri-main"><div class="tri-title">${esc(t.title || t.raw)}<span class="mode-tag ${t.sourceMode === 'active' ? 'active' : ''}">${MODE_META[modeOf(t)].name}</span></div></div>
         <button class="del-btn" title="删除这条探索" onclick="deleteThread('${t.id}')">${svgIcon('trash',16)}</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
@@ -719,7 +726,42 @@ const FLOWS = {
     { id:'note', label:'下次试一点', q:'下次，你最想改进这一步的哪里？', hint:'挑一个点就够。', ph:'例：定义时“后果”写得太笼统，下次要写具体数字' }
   ]}
 };
-function getFlow(key){ return FLOWS[key]; }
+/* 两条训练路径：偶遇=从客观事件挖问题；探索=把主观念头落到具体。
+   这不是换图标——它改变首页引导、第一步追问、AI 示例角度、发光时刻和产出卡标签。 */
+const MODE_META = {
+  passive: {
+    name:'偶遇',
+    hint:'从一件看得见的事开始，挖出真问题',
+    ph:'刚遇到什么让你纳闷？',
+    intro:'从一件看得见的事开始。先把事实说清楚，再挖问题。',
+    now:{ q:'那件事里，你亲眼看到的是什么？', hint:'只写事实：谁、在哪、做了什么。不写解释。', ph:'例：课间大家都低头刷手机，几乎没人说话' },
+    example:'这条探索来自一件偶遇的客观事件。示例要帮他描述可核对的细节、时间地点人物和事实，不要替他解释原因。',
+    spark:'你抓到了一个别人路过没多想的场景。',
+    probe:'只看你写的事实，原因真的只有一个吗？'
+  },
+  active: {
+    name:'探索',
+    hint:'从一个说不清的念头开始，把它落到具体',
+    ph:'心里有什么想弄明白？',
+    intro:'从一个模糊的念头开始。先让它落到具体场景，再挖问题。',
+    now:{ q:'这个念头，是在什么情况下冒出来的？', hint:'先落到一个具体场景或例子，别停在“我觉得”。', ph:'例：每次想早点睡，躺下反而更清醒' },
+    example:'这条探索来自一个主观的、模糊的念头。示例要帮他落到具体场景和可观察的事实，不要停留在“我觉得/好像”。',
+    spark:'你把一个说不清的念头留下来了，这是想清楚的起点。',
+    probe:'最近哪一件具体的事，让你产生了这个念头？'
+  }
+};
+function modeOf(t) { return (t && t.sourceMode === 'active') ? 'active' : 'passive'; }
+/* 按这条探索的路径返回定制流程；其余阶段不变，避免无谓分叉 */
+function getFlow(key, t) {
+  const base = FLOWS[key]; if (!base) return base;
+  if (key !== 'define') return base;
+  const cfg = MODE_META[modeOf(t || getCur())];
+  if (!cfg) return base;
+  return {
+    intro: cfg.intro,
+    steps: base.steps.map(s => cfg[s.id] ? Object.assign({}, s, cfg[s.id]) : s)
+  };
+}
 
 /* ---------- 主题相关示例：捕捉后一次性生成全部输入步骤的示例句 ----------
    无 Key / 失败一律保持 FLOWS 里的固定示例(s.ph)，不打扰用户。 */
@@ -759,7 +801,8 @@ async function ensureExamples(t, force) {
     `"${id}": 一条贴合「${topic}」这个主题的示例句（写${EXAMPLE_HINTS[id]}；只示范角度和颗粒度，绝不替用户下结论、不把答案写满；≤28字，口语、具体）`
   ).join('\n');
   const sys = '你是青少年思维训练器的示例文案助手。为每个字段写一条简短示例，帮学生明白"这一格该填什么"。硬规则：①示例必须贴合给定主题的具体场景，绝不用与主题无关的套话；②只示范"写什么角度、写到多具体"，绝不替用户把结论、方案、判断写出来——这是思维训练，示例一旦把答案说透就毁了训练；③每条不超过28字，口语、具体、可观察；④只输出一个 JSON 对象，key 用我给的字段名，每行一个，不要解释、不要代码块标记。';
-  const res = await callAI(sys, '主题：' + (t.raw || t.title || '') + '\n\n字段：\n' + fieldLines, 1000);
+  const pathLine = MODE_META[modeOf(t)].example;
+  const res = await callAI(sys, '主题：' + (t.raw || t.title || '') + '\n路径：' + pathLine + '\n\n字段：\n' + fieldLines, 1000);
   if (!res.ok) return;                        /* 失败：静默保持固定示例 */
   const parsed = parseExamples(res.text, EXAMPLE_IDS);
   const got = Object.keys(parsed).length;
@@ -1538,7 +1581,8 @@ function renderMine() {
   const score = Math.min(100, total * 10 + defined * 15 + verified * 20);
   el('ring-num').textContent = score;
   el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
-  el('grow-sub').textContent = total ? `发现 ${total} · 定义 ${defined} · 验证 ${verified} · 走完 ${done.length}` : '先去记下你的第一条探索吧';
+  const passiveN = threads.filter(t => modeOf(t) === 'passive').length;
+  el('grow-sub').textContent = total ? `偶遇 ${passiveN} · 探索 ${total - passiveN} · 验证 ${verified} · 走完 ${done.length}` : '先去记下你的第一条探索吧';
   const disc = Math.min(100, total * 12);
   const def = total ? Math.round(defined / total * 100) : 0;
   const ver = total ? Math.round(verified / total * 100) : 0;
@@ -1711,7 +1755,7 @@ function drawCard(t) {
   const cards = [];
 
   /* A · 起点 */
-  cards.push({ emoji: '🔍', kicker: '起点 · 我记下的', accent: GREEN,
+  cards.push({ emoji: '🔍', kicker: '起点 · ' + (modeOf(t) === 'active' ? '一个模糊的念头' : '一件遇到的事'), accent: GREEN,
     rows: cap(t.raw || t.title || '—', 3, TXT_W, F(26, 500)).map(x => ({ t: x, size: 26, weight: 500, color: INK })) });
 
   /* B · 问题定义（核心，最突出）：标签独占一行，答案另起占满宽度，杜绝溢出 */
@@ -1860,6 +1904,7 @@ function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 
 
 /* ---------- 启动 ---------- */
 function init() {
+  applyModeUI();
   renderAbout();
   renderHomeThreads();
   updateAiBtn();

@@ -34,11 +34,12 @@
           <button class="mode-chip" data-mode="active" onclick="setMode('active',this)">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>探索</button>
         </div>
+        <div class="mode-hint" id="mode-hint">从一件看得见的事开始，挖出真问题</div>
         <div class="search">
           <button class="add-src" onclick="openSheet()" aria-label="多源捕捉">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <textarea class="cap-input" id="home-input" placeholder="随手记下你的奇妙发现…" rows="1"></textarea>
+          <textarea class="cap-input" id="home-input" placeholder="刚遇到什么让你纳闷？" rows="1"></textarea>
           <button class="send" onclick="submitHome()" aria-label="记下来">
             <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6"/></svg>
           </button>
