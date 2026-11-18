@@ -28,7 +28,9 @@ const ICON_PATHS = {
   down:'<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
   up:'<path d="M12 21V9M7 14l5-5 5 5M4 3h16"/>',
   trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
-  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  camera:'<path d="M3 8a2 2 0 0 1 2-2h3l2-3h4l2 3h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1"/>'
 };
 function svgIcon(name, size) {
   size = size || 20;
@@ -275,62 +277,217 @@ function moreCapture() {
 function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
 /* ---------- 多源捕捉面板 ---------- */
-function openSheet() { el('sheet-mask').classList.add('active'); el('cap-sheet').classList.add('active'); }
-function closeSheet() { el('sheet-mask').classList.remove('active'); el('cap-sheet').classList.remove('active'); }
+/* 关键不变量：任何来源进 addThread 前，raw 都必须是一句有真实语义的中文描述。
+   图片/链接若无法自动读懂，就必须让用户补一句——否则下游全问无关问题。 */
+let pendingCapture = null;     // { type:'photo'|'link', data?, url?, host? }
+let pendingEditId = null;      // 旧数据补描述时指向已有 thread
+let voiceRec = null, voiceFinal = '', voiceInterim = '';
+
+function panelShow(id, on) { const n = el(id); if (n) n.style.display = on ? '' : 'none'; }
+function openSheet() {
+  resetPanels();
+  el('sheet-mask').classList.add('active'); el('cap-sheet').classList.add('active');
+}
+function resetPanels() {
+  panelShow('source-grid', true); panelShow('link-row', false);
+  panelShow('voice-row', false); panelShow('followup-row', false);
+  const title = el('sheet-title'); if (title) title.textContent = '怎么记下这一刻？';
+  const cancel = el('sheet-cancel'); if (cancel) cancel.style.display = '';
+  const done = el('vr-done'); if (done) { done.textContent = '说完了'; done.onclick = finishVoice; }
+  pendingCapture = null; pendingEditId = null;
+}
+function closeSheet() {
+  stopVoice();
+  el('sheet-mask').classList.remove('active'); el('cap-sheet').classList.remove('active');
+  resetPanels();
+}
+function showPanel(kind) {
+  panelShow('source-grid', false); panelShow('link-row', kind === 'link');
+  panelShow('voice-row', kind === 'voice'); panelShow('followup-row', kind === 'followup');
+  const cancel = el('sheet-cancel'); if (cancel) cancel.style.display = (kind === 'voice' || kind === 'followup') ? 'none' : '';
+}
 function pickSource(type) {
   if (type === 'write') { closeSheet(); el('home-input').focus(); return; }
-  if (type === 'link') {
-    const row = el('link-row'); if (row) { row.style.display = 'flex'; }
-    const li = el('link-input'); if (li) li.focus();
-    return;
-  }
-  closeSheet();
-  if (type === 'voice') {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      try {
-        const r = new SR(); r.lang = 'zh-CN'; r.interimResults = false;
-        r.onresult = e => { const text = e.results[0][0].transcript; if (text.trim()) addThread(text.trim(), { type:'voice' }); else toast('没听清，再试一次'); };
-        r.onerror = () => toast('语音没听清，改用写下来吧');
-        r.start(); toast('在听，说说你纳闷什么…'); return;
-      } catch (e) {}
-    }
-    toast('这台设备不支持语音，用写下来吧'); el('home-input').focus();
-  } else if (type === 'photo') {
-    el('photo-input').click();
+  if (type === 'link') { showPanel('link'); const li = el('link-input'); if (li) li.focus(); return; }
+  if (type === 'voice') { startVoice(); return; }
+  if (type === 'photo') { el('photo-input').click(); }
+}
+
+/* ---- 语音：真实监听 + 明确状态；不支持就如实降级，不装 ---- */
+function voiceUI(status, text, hint, live) {
+  const s = el('vr-status'), t = el('vr-text'), h = el('vr-hint');
+  if (s) { s.textContent = status; s.classList.toggle('no-live', !live); }
+  if (t) { t.textContent = text || ''; t.classList.toggle('has-text', !!text); }
+  if (h) h.textContent = hint || '';
+}
+function startVoice() {
+  stopVoice(); showPanel('voice');
+  voiceFinal = ''; voiceInterim = '';
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { voiceFallback(); return; }
+  try {
+    const r = new SR();
+    r.lang = 'zh-CN'; r.continuous = true; r.interimResults = true;
+    r.onstart = () => voiceUI('正在听…', '说出你纳闷的事，说完点「说完了」', '只在这台设备上转写，不上传。', true);
+    r.onresult = e => {
+      let fin = voiceFinal, itm = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const seg = e.results[i];
+        if (seg.isFinal) fin += seg[0].transcript; else itm += seg[0].transcript;
+      }
+      voiceFinal = fin; voiceInterim = itm;
+      const shown = (fin + itm).trim();
+      voiceUI('正在听…', shown || '说出你纳闷的事，说完点「说完了」', '只在这台设备上转写，不上传。', true);
+    };
+    r.onerror = e => { if (e && e.error === 'no-speech') return; voiceFallback(); };
+    r.onend = () => { voiceRec = null; };
+    voiceRec = r;
+    const done = el('vr-done'); if (done) { done.textContent = '说完了'; done.onclick = finishVoice; }
+    r.start();
+  } catch (e) { voiceFallback(); }
+}
+function voiceFallback() {
+  stopVoice(); showPanel('voice');
+  voiceUI('这个浏览器听不清中文',
+    '点下面用键盘上的麦克风说，一样能记下来。',
+    '国内网络下浏览器自带语音常连不上；系统输入法的语音是可靠的。', false);
+  const done = el('vr-done');
+  if (done) {
+    done.textContent = '用键盘语音输入';
+    done.onclick = () => { closeSheet(); el('home-input').focus(); toast('按住键盘上的麦克风说话'); };
   }
 }
+function stopVoice() {
+  if (!voiceRec) return;
+  try { voiceRec.onresult = null; voiceRec.onerror = null; voiceRec.onend = null; voiceRec.stop(); } catch (e) {}
+  voiceRec = null;
+}
+function finishVoice() {
+  const text = (voiceFinal + voiceInterim).trim();
+  stopVoice();
+  if (!text) { toast('还没听到内容，再说一次或用键盘语音输入'); return; }
+  closeSheet(); addThread(text, { type:'voice' }); toast('已记下');
+}
+
+/* ---- 图片/链接：内容理解 + 必须补一句 ---- */
 function submitLink() {
   const li = el('link-input'); const v = li ? li.value.trim() : '';
   if (!v) { toast('先贴一个链接'); return; }
   let url = v;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  addThread(url, { type:'link', url });
-  li.value = ''; const row = el('link-row'); if (row) row.style.display = 'none';
-  closeSheet();
+  let host = '';
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { host = url.slice(0, 26); }
+  if (li) li.value = '';
+  openFollowup({ type:'link', url, host });
 }
 function onPhotoChosen(e) {
   const f = e.target.files && e.target.files[0];
-  if (f) {
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = new Image();
-      img.onload = () => {
-        /* 压成缩略图 dataURL 存本地，避免撑爆 localStorage */
-        const maxW = 480, scale = Math.min(1, maxW / img.width);
-        const cv = document.createElement('canvas');
-        cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
-        const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, cv.width, cv.height);
-        const data = cv.toDataURL('image/jpeg', 0.7);
-        addThread('📷 我拍下的一个发现', { type:'photo', data });
-        toast('照片已记下');
-      };
-      img.onerror = () => { addThread('📷 我拍下的一个发现', { type:'photo' }); toast('照片已记下'); };
-      img.src = ev.target.result;
+  if (!f) { e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      /* 压成缩略图 dataURL 存本地，避免撑爆 localStorage */
+      const maxW = 480, scale = Math.min(1, maxW / img.width);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+      const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, cv.width, cv.height);
+      openFollowup({ type:'photo', data: cv.toDataURL('image/jpeg', 0.7) });
     };
-    reader.readAsDataURL(f);
-  }
+    img.onerror = () => openFollowup({ type:'photo', data:null });
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(f);
   e.target.value = '';
+}
+function openFollowup(meta, editId) {
+  pendingCapture = meta || null;
+  pendingEditId = editId || null;
+  const sheetTitle = el('sheet-title'); if (sheetTitle) sheetTitle.textContent = editId ? '给这条探索补一句' : '怎么记下这一刻？';
+  el('sheet-mask').classList.add('active'); el('cap-sheet').classList.add('active');
+  showPanel('followup');
+  const th = el('fu-thumb'), title = el('fu-title'), ai = el('fu-ai'), inp = el('followup-input');
+  if (meta.type === 'photo') {
+    if (th) th.innerHTML = meta.data ? `<img src="${meta.data}" alt="拍下的图">` : svgIcon('camera', 22);
+    if (title) title.innerHTML = '这张图里，哪里让你纳闷？<small>写一句，后面的问题才会围着它转</small>';
+    if (inp) { inp.value = ''; inp.placeholder = '例：为什么货架上同一款便宜这么多？'; }
+    if (ai) ai.style.display = 'none';
+    visionDescribe(meta.data).then(text => {
+      if (!text || pendingCapture !== meta) return;
+      if (ai) { ai.innerHTML = `<b>AI 读到：</b>${esc(text)}（下面这句可以直接改）`; ai.style.display = ''; }
+      if (inp && !inp.value.trim()) inp.value = text;
+    });
+  } else {
+    if (th) th.innerHTML = `<span class="fu-host">${esc(meta.host || '链接')}</span>`;
+    if (title) title.innerHTML = '这个链接，你想弄明白什么？<small>写一句，后面的问题才会围着它转</small>';
+    if (inp) { inp.value = ''; inp.placeholder = '例：这篇说每天走一万步，真的有依据吗？'; }
+    if (ai) ai.style.display = 'none';
+    fetchLinkMeta(meta.url).then(m => {
+      if (!m || pendingCapture !== meta) return;
+      if (ai) {
+        ai.innerHTML = `<b>链接标题：</b>${esc(m.title || meta.host)}${m.description ? '<br>' + esc(String(m.description).slice(0, 70)) : ''}`;
+        ai.style.display = '';
+      }
+      if (inp && !inp.value.trim() && m.title) inp.value = m.title + '：真的吗？';
+    });
+  }
+  setTimeout(() => { if (inp) inp.focus(); }, 80);
+}
+function confirmFollowup() {
+  const inp = el('followup-input'); const text = inp ? inp.value.trim() : '';
+  if (!text) { toast('写一句你纳闷什么，后面的问题才不会跑偏'); if (inp) inp.focus(); return; }
+  const cap = pendingCapture; if (!cap) { toast('再试一次'); return; }
+  if (pendingEditId) {
+    /* 旧数据修复：只改这条的 raw/title，不新建、不丢已有阶段进度 */
+    const t = DB.threads.find(x => x.id === pendingEditId);
+    const id = pendingEditId;
+    if (t) { t.raw = text; t.title = text.slice(0, 42); t.updatedAt = Date.now(); save(); }
+    closeSheet(); openThread(id); toast('已补上描述'); return;
+  }
+  closeSheet();
+  if (cap.type === 'photo') addThread(text, { type:'photo', data:cap.data });
+  else addThread(text, { type:'link', url:cap.url, host:cap.host });
+  toast('已记下');
+}
+/* 图片识别：仅 Key + 支持视觉的 provider 生效，失败静默返回 null（纯前端边界） */
+async function visionDescribe(dataURL) {
+  const s = DB.settings || {};
+  if (!s.aiKey || !dataURL) return null;
+  const prov = s.aiProvider || 'deepseek';
+  let url, model;
+  if (prov === 'openai') { url = 'https://api.openai.com/v1/chat/completions'; model = 'gpt-4o-mini'; }
+  else if (prov === 'custom') { url = (s.aiBase || '').replace(/\/$/, '') + '/chat/completions'; model = 'gpt-4o-mini'; }
+  else return null;   /* deepseek-chat 不接图像 */
+  try {
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + s.aiKey },
+      body: JSON.stringify({
+        model, temperature:0.3, max_tokens:120,
+        messages:[
+          { role:'system', content:'你是思维教练。仔细看这张图，用一句中文疑问句（不超过40字）写出图中最值得探的一个具体问题。只输出这句问句，不要解释、不要前后缀。' },
+          { role:'user', content:[ {type:'text',text:'这张图里值得探的问题是什么？'}, {type:'image_url',image_url:{url:dataURL}} ] }
+        ]
+      })
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    return txt ? String(txt).trim().replace(/^[「"“]+|[」"”]+$/g, '').slice(0, 60) : null;
+  } catch (e) { return null; }
+}
+/* 链接摘要：无后端，只能试公开 CORS metadata 服务；4 秒超时，失败静默降级 */
+async function fetchLinkMeta(url) {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, 4000);
+  try {
+    const r = await fetch('https://api.microlink.io/?url=' + encodeURIComponent(url), ctrl ? { signal:ctrl.signal } : {});
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j || j.status !== 'success' || !j.data) return null;
+    return { title: j.data.title || '', description: j.data.description || '' };
+  } catch (e) { return null; }
+  finally { clearTimeout(timer); }
 }
 
 /* ---------- 我的线索列表（首页） ---------- */
@@ -492,12 +649,33 @@ function triage(id, act) {
 /* ---------- 线索打开 / 阶段渲染 ---------- */
 function openThread(id) {
   const t = DB.threads.find(x => x.id === id); if (!t) return;
+  /* 旧数据修复：当年图片/链接只存了占位文字或裸 URL，打开时先补一句再进阶段，避免下游问无关问题 */
+  if (hasWeakRaw(t) && t.media && (t.media.data || t.media.url)) { repairRaw(t); return; }
   curThreadId = id;
   if (t.status === 'captured') { go('s-pool'); return; }
   curStage = t.stagePointer;
   go('s-stage');
   renderStage();
   ensureExamples(t);   /* 捕捉时无 Key、后来才填的补救：首次进入阶段时补生成 */
+}
+function hasWeakRaw(t) {
+  const r = String(t.raw || '').trim();
+  return !r || /^(📷|🔗|https?:\/\/)/i.test(r) || r === '我拍下的一个发现';
+}
+function repairRaw(t) {
+  const m = t.media || {};
+  const meta = m.type === 'photo'
+    ? { type:'photo', data:m.data || null }
+    : { type:'link', url:m.url || '', host:m.host || String(m.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0] };
+  openFollowup(meta, t.id);
+}
+/* 阶段页保留原始媒体线索：让用户看到图/链接真的被记住了，不只是留了句话 */
+function captureMediaHTML(t) {
+  const m = t.media || {};
+  if (m.type === 'photo' && m.data) return `<div class="dlg-ctx-media"><img src="${m.data}" alt="捕捉时拍的图"><span>你拍下的图</span></div>`;
+  if (m.type === 'link' && m.url) return `<div class="dlg-ctx-media"><span class="ctx-host">${esc(m.host || '链接')}</span><a href="${esc(m.url)}" target="_blank" rel="noopener">打开原链接</a></div>`;
+  if (m.type === 'voice') return `<div class="dlg-ctx-media"><span>来自语音转写</span></div>`;
+  return '';
 }
 function getCur() { return DB.threads.find(x => x.id === curThreadId); }
 
@@ -801,7 +979,7 @@ function renderStage() {
     <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
     <span class="progress-txt">${Math.min(d.progress, stepTotal)}/${stepTotal}</span>
   </div>`;
-  body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div></div>`;
+  body += `<div class="dlg-context"><span class="dlg-ctx-tag">你在捕捉时记下的</span><div class="dlg-ctx-text">${esc(t.raw || t.title || '—')}</div>${captureMediaHTML(t)}</div>`;
   /* 进阶屏：先给真实成长反馈，再让用户写一个改进点；走完显示完成卡 */
   if (key === 'improve') {
     body += `<div id="review-slot">${reviewHTML(t)}</div>`;

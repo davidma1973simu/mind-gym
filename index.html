@@ -173,8 +173,8 @@
     <div class="sheet-mask" id="sheet-mask" onclick="closeSheet()"></div>
     <div class="cap-sheet" id="cap-sheet">
       <div class="sheet-handle"></div>
-      <div class="sheet-title">怎么记下这一刻？</div>
-      <div class="source-grid">
+      <div class="sheet-title" id="sheet-title">怎么记下这一刻？</div>
+      <div class="source-grid" id="source-grid">
         <button class="source-tile" onclick="pickSource('write')">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>写下来</span>
         </button>
@@ -192,7 +192,30 @@
         <input id="link-input" class="src-input" placeholder="贴一个链接…" />
         <button class="btn-mini primary" onclick="submitLink()">记下</button>
       </div>
-      <button class="sheet-cancel" onclick="closeSheet()">取消</button>
+      <!-- 语音：真实状态面板，不再一点就消失 -->
+      <div class="voice-row" id="voice-row" style="display:none;">
+        <div class="vr-status" id="vr-status">正在听…</div>
+        <div class="vr-text" id="vr-text">说说你纳闷什么</div>
+        <div class="vr-hint" id="vr-hint"></div>
+        <div class="vr-actions">
+          <button class="btn-mini" onclick="closeSheet()">取消</button>
+          <button class="btn-mini primary" id="vr-done" onclick="finishVoice()">说完了</button>
+        </div>
+      </div>
+      <!-- 图片/链接：补一句真实描述，否则下游无从理解 -->
+      <div class="followup-row" id="followup-row" style="display:none;">
+        <div class="fu-head">
+          <div class="fu-thumb" id="fu-thumb"></div>
+          <div class="fu-title" id="fu-title">写一句就纳闷什么</div>
+        </div>
+        <div class="fu-ai" id="fu-ai" style="display:none;"></div>
+        <textarea id="followup-input" class="src-input fu-input" rows="2" placeholder="一句话就够：这里哪里让你纳闷？"></textarea>
+        <div class="fu-actions">
+          <button class="btn-mini" onclick="closeSheet()">取消</button>
+          <button class="btn-mini primary" id="fu-confirm" onclick="confirmFollowup()">记下这个疑问</button>
+        </div>
+      </div>
+      <button class="sheet-cancel" id="sheet-cancel" onclick="closeSheet()">取消</button>
     </div>
     <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)" />
 
