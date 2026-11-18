@@ -94,7 +94,7 @@ function go(id, btn) {
   else if (id === 's-mine') { setNav('s-mine'); }
   if (id !== 's-home') clearInterval(aboutTimer);
   if (id === 's-home') { renderHomeThreads(); if (DB.user.ageConfirmed) restartAbout(); }
-  if (id === 's-pool') { renderPool(); renderTopics(); }
+  if (id === 's-pool') { setPoolTab('mine'); renderPool(); renderTopics(); }
   if (id === 's-mine') renderMine();
   updateFab();
   updateAiBtn();
@@ -639,9 +639,13 @@ function renderTopics() {
 }
 function tryTopic(i) {
   const tp = TOPICS[i]; if (!tp) return;
-  go('s-home');
-  const input = el('home-input'); if (input) { input.value = tp.q; input.focus(); }
-  toast('放进输入框了，改改就能记下');
+  /* 兑现"我也想探"的承诺：直接据为己有，进入分诊池决定要不要推进 */
+  const t = addThread(tp.q, null);
+  if (!t) return;
+  t.sourceMode = 'active';   /* 话题是"想探的方向"，归入探索路径 */
+  save();
+  go('s-pool');
+  toast('已放进你的池子，决定要不要推进');
 }
 /* 彻底删除一条探索（不可逆，需二次确认）。状态类的“放弃/归档”仍走 triage。 */
 function deleteThread(id) {
@@ -830,7 +834,8 @@ function refreshPlaceholder() {
   if (!input || !t || curStage === null) return;
   const m = STAGES[curStage]; if (!m) return;
   const d = ensureFlow(t, m.key);
-  const s = (FLOWS[m.key].steps || [])[d.progress];
+  /* 用 getFlow 而非 FLOWS：探索路径第一步示例与偶遇不同，占位提示也要跟着路径走 */
+  const s = (getFlow(m.key, t).steps || [])[d.progress];
   if (s) input.placeholder = exampleFor(t, s);
 }
 async function regenExamples() {
@@ -916,7 +921,9 @@ function problemBuild(t) {
   const edited = (a.problemAsk || '').trim();
   if (!isBlankConclusion(edited)) ask = extractAsk(edited) || edited;
   if (isBlankConclusion(ask)) {
-    const ai = (a.problemAi || '').trim();
+    /* 兼容新旧写入位置：answers.problemAi（现行）与 define.problemAi（旧版历史数据） */
+    const d = (t.stageData || {}).define || {};
+    const ai = (a.problemAi || d.problemAi || '').trim();
     if (!isBlankConclusion(ai)) ask = extractAsk(ai) || ai;
   }
   if (isBlankConclusion(ask)) ask = extractAsk((a.problem || '').trim());
@@ -1443,11 +1450,18 @@ function updateGate(done, key) {
   const complete = done !== undefined ? done : (d.progress >= flow.steps.length);
   const needSource = key === 'verify' && d.risk === true && !(d.source || '').trim();
   nb.disabled = !complete || needSource;
+  /* 按钮文案随门禁变化：禁用时直接告诉用户"为什么点不了、要点哪里" */
+  nb.textContent = needSource ? '先补上信息来源' : mNextLabel(key);
   if (hint) {
     if (!complete) hint.textContent = `还有 ${Math.max(0, flow.steps.length - (d.progress || 0))} 个问题没答完`;
-    else if (needSource) hint.textContent = '这条涉及风险，先在对话里补一个来源再收尾';
+    else if (needSource) hint.textContent = '这条涉及风险，在上方「核对来源」里写一句来源才能继续';
     else hint.textContent = '';
   }
+}
+/* 阶段下一步的默认文案（updateGate 覆盖按钮文本时用） */
+function mNextLabel(key) {
+  const m = Object.values(STAGES).find(s => s.key === key);
+  return m ? m.nextLabel : '下一步 →';
 }
 /* 高风险标记：协作阶段问一句，写进 verify，供验证阶段门禁使用 */
 function riskZoneHTML(t, stageKey) {
@@ -1593,16 +1607,21 @@ function renderMine() {
   const verified = threads.filter(t => hasA(t, 'verify', 'result')).length;
   const judged = threads.filter(t => hasA(t, 'collab', 'direction')).length;
   const risk = threads.filter(t => t.stageData && t.stageData.verify && t.stageData.verify.risk).length;
-  const score = Math.min(100, total * 10 + defined * 15 + verified * 20);
-  el('ring-num').textContent = score;
-  el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
-  const passiveN = threads.filter(t => modeOf(t) === 'passive').length;
-  el('grow-sub').textContent = total ? `偶遇 ${passiveN} · 探索 ${total - passiveN} · 验证 ${verified} · 走完 ${done.length}` : '先去记下你的第一条探索吧';
   const disc = Math.min(100, total * 12);
   const def = total ? Math.round(defined / total * 100) : 0;
   const ver = total ? Math.round(verified / total * 100) : 0;
   const cal = total ? Math.round(judged / total * 100) : 0;
   const vals = [disc, def, ver, cal];
+  /* 综合分与雷达同口径：四维平均。成长环填充随分数真实变化，不再固定 30%。 */
+  const score = total ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+  el('ring-num').textContent = score;
+  const ring = el('ring-num') && el('ring-num').parentNode;
+  if (ring) ring.style.background = `conic-gradient(var(--live) 0 ${score}%,var(--green-soft) ${score}% 100%)`;
+  el('grow-label').textContent = total ? '思维肌肉 · 成长中' : '思维肌肉';
+  /* 副标题与雷达四维同口径；偶遇/探索是来源类型，不混进能力维度 */
+  el('grow-sub').textContent = total
+    ? `发现 ${disc} · 定义 ${def} · 验证 ${ver} · 校准 ${cal}`
+    : '先去记下你的第一条探索吧';
   el('radar-svg').innerHTML = drawRadar(vals);
   /* 趋势徽标：与上一次（按完成时间）对比综合分 */
   const scores = done.slice().sort((a,b) => (a.finishedAt||a.updatedAt) - (b.finishedAt||b.updatedAt))
