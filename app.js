@@ -112,13 +112,12 @@ function setNav(id) {
   if (id === 's-home') document.querySelectorAll('.nav-item')[0].classList.add('on');
   if (id === 's-mine') document.querySelectorAll('.nav-item')[1].classList.add('on');
 }
-/* FAB 不在首页显示：首页输入框已有"+"捕捉入口，重复且遮挡。
-   stage 页也不显示（底部有下一步）；只在探索池/我的页提供快速捕捉。 */
+/* FAB 是全局统一的"捕捉"主入口：首页 / 探索池 / 我的页都常驻显示，规则一致。
+   只在阶段页（stage）隐藏——那里底部有"下一步"，悬浮按钮会遮挡点按。 */
 function updateFab() {
   const fab = el('fab'); if (!fab) return;
-  const homeActive = el('s-home').classList.contains('active');
   const stageActive = el('s-stage').classList.contains('active');
-  fab.style.display = (!homeActive && !stageActive) ? 'flex' : 'none';
+  fab.style.display = stageActive ? 'none' : 'flex';
 }
 /* 首页 AI 设置按钮：连接状态用一个小圆点表示，不再覆盖 SVG 图标 */
 function updateAiBtn() {
