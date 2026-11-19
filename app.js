@@ -737,7 +737,7 @@ const STAGES = {
        nextLabel:'下一步：去验证这个方案 →' },
   4: { key:'verify', label:'验证 · 第4步/共5', why:'想法对不对，做了才知道。按验证建议做一次最小测试，记下真实结果，再回头修订。',
        nextLabel:'下一步：看看怎么练得更顺 →' },
-  5: { key:'improve', label:'进阶 · 第5步/共5', why:'看见自己练到了什么，再挑一个下次能改的点。',
+  5: { key:'improve', label:'进阶 · 第5步/共5', why:'撇开题目，看见你自己是怎么想事情的——这句复盘会留在探索卡上。',
        nextLabel:'完成这一趟 →' }
 };
 /* 每个环节的对话脚本。type: text 普通输入 / template 汇总填空 / ai AI 协作 / advice 验证建议 / verdict 二选一 */
@@ -757,13 +757,13 @@ const FLOWS = {
   ]},
   verify: { intro:'先给你一份验证建议。照着做一次最小测试，记下真实发生的事，再回头修订。', steps:[
     { id:'advice', label:'验证建议', q:'这样验证你的方案', hint:'这是针对"你定义的问题"和"你构建的方案"生成的具体测试：去做什么、看什么信号、怎么判断对错。照着做一次即可。', type:'advice' },
-    { id:'test', label:'原型测试', q:'在这个建议下，你具体做了什么？', hint:'一个最小动作 / 一个粗糙原型，写具体做了啥。', ph:'例：周二课间主动跟同桌说了“昨天那题你会吗”' },
+    { id:'test', label:'原型测试', q:'照着建议，一条条去试', hint:'做到一条就勾一条，在每条下面写你实际做了什么、看到什么。建议不够，就自己加一条。', ph:'', type:'checklist' },
     { id:'result', label:'实际结果', q:'真实发生了什么？', hint:'写观察到的事实，不写“感觉还行”。', ph:'例：他愣了一下，跟我聊了两分钟' },
     { id:'verdict', label:'判断', q:'你的判断：有效，还是错了？', hint:'对照你要解决的问题——它被解决了吗？', type:'verdict' },
     { id:'revision', label:'修订', q:'根据结果，怎么修订你的判断或方案？', hint:'这一步会更新你前面整段对话，让它更接近真相。', ph:'例：直接问问题有用，下次可以从共同话题切入' }
   ]},
-  improve: { intro:'先看看这一趟你练到了什么，再挑一个下次能改的点。', steps:[
-    { id:'note', label:'下次试一点', q:'下次，你最想改进这一步的哪里？', hint:'挑一个点就够。', ph:'例：定义时“后果”写得太笼统，下次要写具体数字' }
+  improve: { intro:'先看这一趟你练到了什么。最后写一句只关于你自己的复盘——它会出现在你的探索卡上。', steps:[
+    { id:'note', label:'成长复盘', q:'撇开这个主题，关于"你是怎么想事情的"，你想记下什么？', hint:'和题目内容无关。写你看见的自己：哪一步想得快、哪里卡住、下次想换什么方式。', ph:'例：我发现自己急着下结论，下次想先多问一句"凭什么"' }
   ]}
 };
 /* 两条训练路径：偶遇=从客观事件挖问题；探索=把主观念头落到具体。
@@ -810,7 +810,7 @@ const EXAMPLE_HINTS = {
   now:'现在实际发生的事实', std:'本来应该的样子', gap:'最关键的一处差距',
   cost:'具体可识别的后果', direction:'你倾向的解决方向', reason:'你选这个方向的依据',
   solution:'你认可的最终方案', test:'你具体做的最小动作', result:'真实观察到的事实',
-  revision:'根据结果怎么修订判断', note:'下次最想改进的一点'
+  revision:'根据结果怎么修订判断', note:'关于自己思考方式的一句自我观察（不是对这道题的改进）'
 };
 /* 兼容：整段 JSON / ```json 围栏 / 每行 "id": "值" / id：值 / 中英文逗号 */
 function parseExamples(raw, ids) {
@@ -981,7 +981,11 @@ function threadReview(t) {
   if (vd.risk && !vd.source) watch.push('高风险问题，验证前记得先查一个来源');
   if (va.verdict === 'wrong') watch.push('这次判断偏了——回头看，是哪一步的依据不够实');
   if (!watch.length) watch.push('这次每一步都到位了，下次可以挑战一个更难的问题');
-  return { trained, watch };
+  /* 用户自己写的成长复盘优先：它是关于"我怎么想事情"的，比自动泛泛句更该留在卡上 */
+  const rawNote = String(((d.improve || {}).answers || {}).note || '').trim();
+  const selfNote = (rawNote && rawNote !== '（这步先跳过了）') ? rawNote : '';
+  if (selfNote) watch.unshift(selfNote);
+  return { trained, watch, selfNote };
 }
 function reviewHTML(t) {
   const r = threadReview(t);
@@ -993,8 +997,8 @@ function reviewHTML(t) {
   return `<div class="review-card">
     <div class="rv-head"><span class="rv-badge">这一趟，你练到了</span>${aiBtn}</div>
     <div class="rv-block">${r.trained.map(x => `<div class="rv-row"><b>✓</b>${esc(x)}</div>`).join('')}</div>
-    <div class="rv-watch-title">下次留意</div>
-    <div class="rv-watch">${r.watch.map(x => `<div class="rv-row"><b>→</b>${esc(x)}</div>`).join('')}</div>
+    <div class="rv-watch-title">${r.selfNote ? '我写给自己的一句' : '下次留意'}</div>
+    <div class="rv-watch">${r.watch.map((x, i) => `<div class="rv-row"><b>${r.selfNote && i === 0 ? '✦' : '→'}</b>${esc(x)}</div>`).join('')}</div>
     ${ai}
   </div>`;
 }
@@ -1163,6 +1167,11 @@ function currentTurn(i, s, d, t, key) {
       <button id="j-valid" onclick="setVerdict('valid')">有效</button>
       <button id="j-wrong" onclick="setVerdict('wrong')">判断偏了</button>
     </div>`;
+  } else if (s.type === 'checklist') {
+    ensureChecklist(d);
+    input = `<div class="ck-list" id="ck-list">${checklistHTML(d)}</div>
+      <button class="ck-add" onclick="addCheckItem()">＋ 加一条自己的验证动作</button>
+      <button class="btn step-confirm" onclick="answerChecklist()">记下这些，继续 →</button>`;
   } else {
     let pre = d.answers[s.id] || '';
     if (s.type === 'template') pre = problemBuild(t).ask; // 输入框只放"那句问题"，可直接改写
@@ -1194,6 +1203,78 @@ function adviceHTML(d) {
     return `<div class="advice-list"><div class="advice-src">${src}</div>${d.advice.map(x => `<div class="advice-row">${esc(x)}</div>`).join('')}</div>`;
   }
   return `<div class="advice-list"><div class="advice-src">正在生成…</div></div>`;
+}
+/* ---------- 原型测试 checklist：把验证建议拆成可勾选、可写看法、可增删的清单 ---------- */
+/* 从 advice 初始化一次；旧数据（advice 还没生成）留空，之后 ensureAdvice 写入不覆盖用户已动的清单 */
+function ensureChecklist(d) {
+  if (Array.isArray(d.checklist)) return;
+  const src = Array.isArray(d.advice) ? d.advice : [];
+  d.checklist = src.map((text, i) => ({ id: 'a' + i, text: String(text), note: '', done: false, own: false }));
+  save();
+}
+function checklistHTML(d) {
+  const items = Array.isArray(d.checklist) ? d.checklist : [];
+  if (!items.length) return `<div class="ck-empty">验证建议还在生成，稍等一下；或先自己加一条。</div>`;
+  return items.map((it, i) => `
+    <div class="ck-item ${it.done ? 'done' : ''}">
+      <div class="ck-top">
+        <label class="ck-check" onclick="toggleCheck(${i})">
+          <input type="checkbox" ${it.done ? 'checked' : ''} onclick="event.preventDefault()" aria-label="标记第 ${i + 1} 条为已做">
+          <span class="ck-box">${it.done ? '✓' : ''}</span>
+        </label>
+        ${it.own
+          ? `<input class="ck-text own" id="ck-text-${i}" value="${esc(it.text)}" placeholder="写下你要验证的动作" oninput="setCheckText(${i}, this.value)" aria-label="自定义验证动作">`
+          : `<div class="ck-text">${esc(it.text)}</div>`}
+        ${it.own ? `<button class="ck-del" onclick="removeCheckItem(${i})" aria-label="删除这条">×</button>` : ''}
+      </div>
+      <input class="ck-note" id="ck-note-${i}" value="${esc(it.note || '')}" placeholder="我做了什么 / 我的看法（可留空）" oninput="setCheckNote(${i}, this.value)">
+    </div>`).join('');
+}
+function refreshChecklist() {
+  const box = el('ck-list'); if (!box) return;
+  const t = getCur(); if (!t) return;
+  box.innerHTML = checklistHTML(ensureFlow(t, 'verify'));
+}
+function toggleCheck(i) {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); const it = (d.checklist || [])[i]; if (!it) return;
+  it.done = !it.done; save(); refreshChecklist();
+}
+function setCheckNote(i, v) {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); const it = (d.checklist || [])[i]; if (!it) return;
+  it.note = v; save(); // 不重渲染，避免输入时丢焦点
+}
+function addCheckItem() {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); ensureChecklist(d);
+  d.checklist.push({ id: 'o' + Date.now(), text: '', note: '', done: false, own: true });
+  save(); refreshChecklist();
+  const last = d.checklist.length - 1, inp = el('ck-text-' + last); if (inp) inp.focus();
+}
+function removeCheckItem(i) {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); if (!(d.checklist || [])[i]) return;
+  d.checklist.splice(i, 1); save(); refreshChecklist();
+}
+function setCheckText(i, v) {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); const it = (d.checklist || [])[i]; if (!it) return;
+  it.text = v; save();
+}
+/* 确认：必须至少勾一条或写一条内容，避免空手进下一关；序列化进 answers.test 供下游判断 */
+function answerChecklist() {
+  const t = getCur(); if (!t) return;
+  const d = ensureFlow(t, 'verify'); const items = d.checklist || [];
+  const meaningful = items.filter(x => x.done || (x.text || '').trim() || (x.note || '').trim());
+  if (!meaningful.length) { toast('先勾一条，或写点你做了什么'); return; }
+  const lines = items.map(x => {
+    if (!x.done && !(x.text || '').trim() && !(x.note || '').trim()) return null;
+    return `${x.done ? '✓' : '○'} ${(x.text || '').trim() || '（自己加的动作）'}${x.note && x.note.trim() ? ' — ' + x.note.trim() : ''}`;
+  }).filter(Boolean);
+  d.answers.test = lines.join('\n');
+  d.progress++; t.updatedAt = Date.now(); save(); renderStage();
+  toast('测试记录已存下');
 }
 function stepperHTML(cur) {
   const STEPS = ['捕捉', '定义', '协作', '验证', '进阶'];
@@ -1874,7 +1955,8 @@ function drawCard(t) {
   const chips = rv.trained.map(x => String(x).split(/[：:]/)[0]).filter(Boolean).slice(0, 5);
   const gRows = [];
   if (chips.length) cap(chips.join('  ·  '), 2, TXT_W, F(24, 800)).forEach(x => gRows.push({ t: x, size: 24, weight: 800, color: GREEN }));
-  if (rv.watch[0]) cap('下次留意：' + rv.watch[0], 2, TXT_W, F(22)).forEach(x => gRows.push({ t: x, size: 22, weight: 400, color: MUTED }));
+  if (rv.selfNote) cap('给自己的一句：' + rv.selfNote, 3, TXT_W, F(22)).forEach(x => gRows.push({ t: x, size: 22, weight: 600, color: INK }));
+  else if (rv.watch[0]) cap('下次留意：' + rv.watch[0], 2, TXT_W, F(22)).forEach(x => gRows.push({ t: x, size: 22, weight: 400, color: MUTED }));
   cards.push({ emoji: '💪', kicker: '这一趟，我练到了', accent: GREEN, rows: gRows });
 
   /* 测量高度 */
