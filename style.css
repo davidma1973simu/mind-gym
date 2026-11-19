@@ -425,6 +425,8 @@ body{
 .data-note{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:10px;}
 .backup-row{display:flex;gap:8px;}
 .backup-row .btn-mini{flex:1;}
+.research-row{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
+.research-row .btn-mini{color:var(--muted);font-weight:600;}
 .hist-spark{display:flex;align-items:flex-end;gap:3px;height:34px;margin:8px 2px 2px;}
 .hist-spark i{width:14px;max-width:14px;flex:0 0 14px;border-radius:3px 3px 0 0;background:var(--green-soft);min-height:3px;}
 .hist-spark i:last-child{background:var(--live);}

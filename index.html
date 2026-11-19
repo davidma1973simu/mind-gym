@@ -149,6 +149,10 @@
         </div>
         <input type="file" id="import-input" accept="application/json,.json" style="display:none" onchange="importData(event)" />
         <div class="data-note">数据只存在这台设备。导出一份，换机也不丢。</div>
+        <div class="backup-row research-row">
+          <button class="btn-mini" onclick="exportResearchDigest()">导出研究摘要（脱敏）</button>
+        </div>
+        <div class="data-note">参与验证用：只记「走了哪一步、在哪一周」，不含你写的任何文字、答案或照片。愿意分享就发给研究者。</div>
       </div>
       <div class="note">成长是自己的，不打卡不排名</div>
       <button class="reopen-about" id="reopen-about" onclick="reopenAbout()">重新显示首页介绍</button>

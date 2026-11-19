@@ -82,7 +82,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
-  return { user: { name: null, isMinor: false, guardianPhone: '', consent: false, ageConfirmed: false, aboutClosed: false }, threads: [], settings: {} };
+  return { user: { name: null, isMinor: false, guardianPhone: '', consent: false, ageConfirmed: false, aboutClosed: false }, threads: [], settings: {}, events: [] };
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(DB)); }
@@ -248,7 +248,7 @@ function newThread(raw, media) {
 }
 function addThread(raw, media) {
   const t = newThread(raw, media);
-  DB.threads.unshift(t); save();
+  DB.threads.unshift(t); logEvent('cap', t); save();
   showFeedback(t); renderHomeThreads();
   ensureExamples(t);   /* 捕捉后一次性生成全部阶段的主题示例（无 Key/失败自动跳过） */
   ensureSpark(t);      /* 捕捉后的“发光时刻”：一句贴合主题的肯定 + 一个刁钻追问 */
@@ -687,7 +687,7 @@ function deleteThread(id) {
 }
 function triage(id, act) {
   const t = DB.threads.find(x => x.id === id); if (!t) return;
-  if (act === 'push') { t.status = 'active'; t.stagePointer = 2; t.updatedAt = Date.now(); save(); toast('已推进，去定义 →'); openThread(id); }
+  if (act === 'push') { t.status = 'active'; t.stagePointer = 2; t.updatedAt = Date.now(); logEvent('push', t); save(); toast('已推进，去定义 →'); openThread(id); }
   else if (act === 'drop') { t.status = 'dropped'; save(); renderPool(); renderHomeThreads(); toast('已放下'); }
   else { t.status = 'archived'; save(); renderPool(); renderHomeThreads(); toast('已归档'); }
 }
@@ -1334,8 +1334,11 @@ function answerStep() {
   if (key === 'define' && s.id === 'problem') {
     d.answers.problemAsk = val;
     d.answers.problem = problemTemplate(t);   /* 兼容旧字段 */
+    logEvent('def', t);                        /* 定义完成 */
   } else {
     d.answers[s.id] = val;
+    if (key === 'collab' && s.id === 'direction') logEvent('judge', t);  /* 先判再看：用户先写下自己的判断 */
+    if (key === 'verify' && s.id === 'result') logEvent('verify', t);    /* 北极星：验证真发生（记下了真实结果） */
   }
   d.progress++;
   t.updatedAt = Date.now(); save(); renderStage();
@@ -1591,7 +1594,7 @@ function nextStage() {
   if (curStage < 5) { t.stagePointer = curStage + 1; curStage = curStage + 1; save(); renderStage(); }
   else {
     /* 走完留在进阶屏，完成卡在进阶屏内显示（不再弹到首页，首页保持极简） */
-    t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); save();
+    t.status = 'done'; t.stagePointer = 5; t.finishedAt = Date.now(); logEvent('done', t); save();
     renderStage();
     toast('这一趟，走完了');
     ensureTopic(t);   /* 异步生成完整短语标签，供探索卡标题用 */
@@ -1626,6 +1629,66 @@ function saveDraft() {
     if (s) d.answers[s.id] = inp.value.trim();
   }
   save(); toast('已存草稿');
+}
+
+/* ---------- 验证期·行为埋点（只记事件码与周次，不记任何内容） ----------
+   目的：让北极星「每周验证真发生数」与护栏（捕捉量/推进/定义/先判/完成/模式分布/活跃周）
+   可被观测。events 只存 {t:时间戳, k:事件码, w:ISO周, tid:脱敏线索id, m:捕捉模式}。
+   tid 仅本地幂等用，导出摘要时绝不出现；原文/答案/图片/姓名/电话一律不入 events。 */
+const EVENT_CODES = ['cap', 'push', 'def', 'judge', 'verify', 'done'];
+const EVENT_LABEL = { cap:'捕捉', push:'推进到定义', def:'定义完成', judge:'先写下判断', verify:'验证真发生', done:'完成一趟' };
+function isoWeek(ts) {
+  const d = new Date(ts);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 3);   // 取本周四，跨年周归属稳定
+  const y = d.getFullYear(), jan4 = new Date(y, 0, 4);
+  jan4.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7) + 3);
+  return y + '-W' + String(1 + Math.round((d - jan4) / (7 * 86400000))).padStart(2, '0');
+}
+function logEvent(k, t) {
+  try {
+    DB.events = DB.events || [];
+    const tid = t ? t.id : null;
+    /* 幂等：同一条线索的同一事件只记首次发生，重看/回改不虚增次数 */
+    if (tid && DB.events.some(e => e.k === k && e.tid === tid)) return;
+    DB.events.push({ t: Date.now(), k, w: isoWeek(Date.now()), tid, m: k === 'cap' && t ? t.sourceMode : null });
+  } catch (e) {}
+}
+/* 生成脱敏研究摘要：只有按周聚合的计数，无任何原文、答案、媒体或身份信息 */
+function buildResearchDigest() {
+  const ev = Array.isArray(DB.events) ? DB.events : [];
+  const weeks = {};
+  ev.forEach(e => {
+    const w = e.w || isoWeek(e.t);
+    if (!weeks[w]) weeks[w] = { week:w, cap:0, push:0, def:0, judge:0, verify:0, done:0, passive:0, active:0 };
+    if (EVENT_CODES.indexOf(e.k) >= 0) weeks[w][e.k]++;
+    if (e.k === 'cap') { if (e.m === 'active') weeks[w].active++; else weeks[w].passive++; }
+  });
+  const keys = Object.keys(weeks).sort();
+  const rows = keys.map(w => weeks[w]);
+  const sumKeys = EVENT_CODES.concat(['passive', 'active']);
+  const totals = {}; sumKeys.forEach(k => totals[k] = 0);
+  rows.forEach(r => sumKeys.forEach(k => totals[k] += r[k]));
+  if (!DB.settings.rid) DB.settings.rid = 'i' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  return {
+    app: 'mindgym-research-digest', v: 1,
+    exportedAt: new Date().toISOString(),
+    installId: DB.settings.rid,
+    activeWeeks: keys.length, firstWeek: keys[0] || null, lastWeek: keys[keys.length - 1] || null,
+    totals, weeks: rows,
+    note: '只含"做了哪一步、发生在哪一周"的次数，不含任何你写下的文字、答案、图片、姓名或电话。'
+  };
+}
+function exportResearchDigest() {
+  try {
+    const payload = JSON.stringify(buildResearchDigest(), null, 2);
+    const blob = new Blob([payload], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `探奇-研究摘要-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('研究摘要已导出');
+  } catch (e) { toast('导出失败'); console.error(e); }
 }
 
 /* ---------- 数据导出 / 导入：换机不丢 ---------- */
@@ -1663,7 +1726,8 @@ function importData(e) {
       DB = {
         user: Object.assign({ name:null, isMinor:false, guardianPhone:'', consent:false, ageConfirmed:true, aboutClosed:false }, data.user || {}),
         threads: data.threads,
-        settings: data.settings || {}
+        settings: data.settings || {},
+        events: Array.isArray(data.events) ? data.events : []
       };
       save();
       renderHomeThreads(); if (el('s-pool').classList.contains('active')) { renderPool(); renderTopics(); }
